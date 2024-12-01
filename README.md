@@ -47,25 +47,6 @@ Es un lenguaje muy simple diseñado para fines educativos.  No está pensado par
 
 El proyecto está organizado en las siguientes carpetas y archivos principales:
 
-
-├───.settings
-├───bin
-│   ├───Principal
-│   └───proyectoPDL
-│       ├───analizadorLexico
-│       ├───analizadorSemantico
-│       ├───analizadorSintactico
-│       ├───analizadorSintacticoSemantico
-│       └───gestorErrores
-└───src
-    ├───Principal
-    └───proyectoPDL
-        ├───analizadorLexico
-        ├───analizadorSemantico
-        ├───analizadorSintactico
-        ├───analizadorSintacticoSemantico
-        └───gestorErrores
-
 ### Paquete `Principal`
 
 * **`Principal.java`**: Clase principal que inicia el análisis. Lee el archivo fuente, inicializa los analizadores y gestiona la salida.
