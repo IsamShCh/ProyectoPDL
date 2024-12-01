@@ -1,0 +1,4053 @@
+C:\Users\ISM\git\repository\proyectoPDF\src\Principal\Principal.java 
+package Principal;
+
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.util.ArrayList;
+
+import proyectoPDL.analizadorLexico.*;
+import proyectoPDL.analizadorLexico.Token.Tipo;
+import proyectoPDL.analizadorSemantico.AnalizadorSemantico;
+import proyectoPDL.analizadorSintactico.*;
+import proyectoPDL.analizadorSintacticoSemantico.MainASintSem;
+import proyectoPDL.gestorErrores.GestorErrores;
+
+public class Principal {
+
+	public static void main(String[] args) throws IOException {
+		String dirActual = System.getProperty("user.dir");
+		System.out.println("Estamos trabajando en el directorio: "+dirActual);
+		
+		String nombreArchivo = dirActual+"\\fichero_entrada.txt";
+		String ficheroParse = dirActual+"\\fichero_formato_Parse_Ascendente.txt";
+		String ficheroTok = dirActual+"\\fichero_salida_tokens.txt";
+		String ficheroTabla = dirActual+"\\fichero_salida_tabla.txt";
+		
+		System.out.println("Se leerá el contenido del fichero fuente "+nombreArchivo+"\n");
+
+		PrintStream salidaError = new PrintStream(dirActual+"\\errores.txt");
+		
+		System.out.println("Si hay errores, se notificarán en el fichero: "+dirActual+"\\errores.txt");
+        
+		/*
+        System.setErr(salidaError);
+		*/
+		
+        File file = new File(nombreArchivo);
+        if(!file.exists())
+        {
+        	System.err.println("No se ha encontrado un fichero fuente llamado 'fichero_entrada.txt' que contenga el código a analizar");
+        	System.exit(0);
+        }
+        
+		
+		TablaDeSimbolos tabla = new TablaDeSimbolos();
+		GestorErrores gestorE = new GestorErrores(tabla);
+		MainALexico AL = new MainALexico(nombreArchivo, tabla);
+		AnalizadorSemantico ASem = new AnalizadorSemantico(tabla);
+		MainASintSem AS = new MainASintSem(ASem, tabla);
+		Token tok;
+
+		boolean valido = false;
+		boolean parar = false;
+
+		FileWriter escritor_tok = new FileWriter(ficheroTok);
+		BufferedWriter buffer_tok = new BufferedWriter(escritor_tok);
+
+		FileWriter escritor_Parse = new FileWriter(ficheroParse);
+		BufferedWriter buffer_Parse = new BufferedWriter(escritor_Parse);
+
+		FileWriter escritor_Tabla = new FileWriter(ficheroTabla);
+		BufferedWriter buffer_Tabla = new BufferedWriter(escritor_Tabla);
+
+		while (!parar) {
+			tok = AL.siguienteToken();   /* LOS ERRORES SE GESTIONAN DENTRO DEL ANALIZADOR LEXICO*/
+			if (tok == null) {
+				parar = true;
+			} else {
+				buffer_tok.write(tok.toString() + " ");
+			}
+			//System.out.println(tok);
+
+			if (parar == true) // estamos en el caso $
+			{
+				valido = AS.validarTokenASint(null); /* LOS ERRORES SE TRATAN DENTRO DEL ANALIZADOR SINTACTICO */
+			} else {
+				valido = AS.validarTokenASint(tok); /* PA */
+			}
+		}
+
+		buffer_Tabla.write(AL.getTabla());
+		buffer_Parse.write(AS.getParse());
+		buffer_tok.close();
+		buffer_Tabla.close();
+		buffer_Parse.close();
+		//System.out.println(Automata.sustitucionSimbolos(AS.getAut().toDot()));
+		
+		System.out.println("----------------------------------.");
+		System.err.println("Ejecucion sin errores.");
+		System.out.println("Puedes revisar la salida de tokens en: " +ficheroTok);
+		System.out.println("Puedes revisar la Tabla de Simbolos en: " +ficheroTabla);
+		System.out.println("Puedes revisar el Parse Ascendente en: " +ficheroParse);
+		
+
+	}
+
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\Principal\TablaDeSimbolos.java 
+package Principal;
+
+import java.util.ArrayList;
+
+
+import proyectoPDL.analizadorLexico.*;
+import proyectoPDL.analizadorLexico.Entrada.E_Tipo;
+import proyectoPDL.analizadorSintactico.Pair;
+public class TablaDeSimbolos {
+
+	private ArrayList<ArrayList<Entrada>> tablasDeSimbolos;
+	int contador_id = 0;
+	public boolean flag_en_Local = false;
+	public boolean flag_let = false;
+	public boolean flag_atributos_funcion = false;
+	private int var_cont = 0;
+
+	//public boolean flag_declarando = false;
+
+	public ArrayList<Entrada> TablaActual()
+	{
+		if(flag_en_Local == false) {
+			return tablasDeSimbolos.get(0);
+
+		} else {
+			return tablasDeSimbolos.get(tablasDeSimbolos.size()-1);
+			//return tablasDeSimbolos.getLast();
+		}
+	}
+
+	public boolean flagLocal()
+	{
+		return flag_en_Local;
+	}
+
+	/*## AVISO ##  :: no lo estamos usando xd*/
+	public void insertarDatoTS(String modo,int idPos, Object contenido)
+	{
+		Pair<Integer,Integer> postablaYentrada = obtenerNumeroEntradaXidPos(idPos);
+		int idTabla = postablaYentrada.getKey();
+		int numEntrada = postablaYentrada.getValue();
+
+		if (modo.toLowerCase().equals("tipo"))
+		{
+			Entrada ent;
+			E_Tipo _contenido_ = (E_Tipo)contenido;
+			ent = getEntradaTS(idTabla, numEntrada);
+			ent.setTipo(_contenido_);
+			calcularDesplazamiento(idTabla, numEntrada); /*este metodo se encarga de ir a la entread y darle un valor de desplazamiento ## ATENCION ## : posiblemente pueda haber errores aqui por que devuelve -1 o -2*/
+
+		}
+		else if(modo.toLowerCase().equals("tipoParam"))
+		{
+			E_Tipo _contenido_ = (E_Tipo)contenido;
+			Entrada ent = getEntradaTS(idTabla, numEntrada);
+			ent.setTipoParam(_contenido_);
+
+		}
+		else if(modo.toLowerCase().equals("tiporetorno"))
+		{
+			E_Tipo _contenido_ = (E_Tipo)contenido;
+			Entrada ent = getEntradaTS(idTabla, numEntrada);
+			ent.setTipoRetorno(_contenido_);
+
+		}
+		else if(modo.toLowerCase().equals("setnumparam"))
+		{
+			int _contenido_ = (int)contenido;
+			Entrada ent = getEntradaTS(idTabla, numEntrada);
+			ent.setNumParam(_contenido_);
+
+		}
+		else if(modo.toLowerCase().equals("setnumparam"))
+		{
+			int _contenido_ = (int)contenido;
+			Entrada ent = getEntradaTS(idTabla, numEntrada);
+			ent.setNumParam(_contenido_);
+
+		}
+	}
+	/*
+
+ __      ___   ___ _  _ ___ _  _  ___ 
+ \ \    / /_\ | _ \ \| |_ _| \| |/ __|
+  \ \/\/ / _ \|   / .` || || .` | (_ |
+   \_/\_/_/ \_\_|_\_|\_|___|_|\_|\___|
+
+	 */
+	/*## AVISO ## : ESTE METODO PROBABLEMENTE ESTÉ MAL POR ALGUN FALLO DE LOGICA */
+	public Pair<Integer,Integer> obtenerNumeroEntradaXidPos(int idPos)
+	{
+		idPos = idPos + 1; // porque empieza en 0
+		Pair<Integer, Integer> par = new Pair<Integer, Integer>(null, null);
+		int total_listas = tablasDeSimbolos.size();
+		ArrayList<Entrada> se_encuentra_aqui = null;
+		int idLista = 0;
+		for(ArrayList<Entrada> lista : tablasDeSimbolos)
+		{
+			int tam = lista.size();
+			idLista = idLista - tam;
+			if(idLista < 0)
+			{
+				se_encuentra_aqui = lista;
+				break;
+			}
+			idLista++;
+		}
+
+
+		int tam = se_encuentra_aqui.size();
+		int pos = tam + idLista;
+
+		return new Pair<Integer,Integer>( pos-1 , idLista );
+	}
+
+	public Entrada obtenerEntradaXidPos(int identificador)
+	{
+		Entrada entrada_encontrada = null;
+		for(ArrayList<Entrada> lista : tablasDeSimbolos)
+		{
+			for(Entrada ent : lista)
+			{
+				if (ent.getIdentificador() == identificador)
+				{
+					entrada_encontrada = ent;
+					break;
+				}
+
+			}
+		}
+
+		return entrada_encontrada;
+	}
+
+
+	/* ## AVISO ## : no lo estamos usando */	
+	public boolean calcularDesplazamiento(int idLista, int idPos)
+	{
+		if(tablasDeSimbolos.get(idLista).size() == 0)
+		{
+			Entrada ent = tablasDeSimbolos.get(idLista).get(idPos);
+			int tam = obtenerTamanoTipo(ent);
+			ent.setDesplazamiento(tam);
+			return true;
+		}
+		else
+		{
+			Entrada ent = tablasDeSimbolos.get(idLista).get(idPos);
+			Entrada ent_ant = tablasDeSimbolos.get(idLista).get(idPos-1);
+			int tam = obtenerTamanoTipo(ent);
+			int desp = ent_ant.getDesplazamiento();
+			ent.setDesplazamiento(desp+tam);
+			return true;
+		}
+
+	}
+
+	/* ## AVISO ## : no lo estamos usando */	
+	public void calcularDesplazamiento2(ArrayList<Entrada> lista, Entrada ent)
+	{
+		if(lista.size() == 0)
+		{
+			
+		} else if(lista.size() == 1) {
+			//Entrada ent = lista.get(idPos);
+			//int tam = obtenerTamanoTipo(ent);
+			ent.setDesplazamiento(0);
+		} else {
+			int idPos = lista.indexOf(ent);
+			if(idPos == 0) {
+				ent.setDesplazamiento(0);
+			} else {
+			Entrada ent_ant = lista.get(idPos-1);
+			int tam = obtenerTamanoTipo(ent_ant);
+			int desp = ent_ant.getDesplazamiento();
+			ent.setDesplazamiento(desp+tam);
+			
+			}
+		}
+	}
+	public int obtenerTamanoTipo(Entrada ent)
+	{
+		E_Tipo tipo = ent.getTipo();
+		if(tipo == null)
+		{
+
+			return -1; /*con este valor notificamos que esta entrada no tiene tipo definido*/
+		}
+
+		if(tipo == E_Tipo.ent )
+		{
+			return 1;
+
+		}
+		else if (tipo == E_Tipo.logico)
+		{
+			return 1;
+		}
+		else if (tipo == E_Tipo.vacio)
+		{
+			return 0;  /*## AVISO ## : NO SE SI ESTE ES EL VALOR QUE DEBERIA DEVOLVER */
+		}
+		else if(tipo == E_Tipo.cadena)
+		{
+			return 64;   /*## AVISO ## : NO SE SI ESTE ES EL VALOR QUE DEBERIA DEVOLVER */
+		}
+
+		return -1; /*con este valor notificamos que tenemos una situacion inedita*/
+	}
+
+
+	public int  crearTablaLocal()
+	{
+		tablasDeSimbolos.add(new ArrayList<Entrada>());
+		return tablasDeSimbolos.size()-1;
+	}
+
+
+	public Entrada getEntradaTS(int idLista, int idEntrada)
+	{
+		return tablasDeSimbolos.get(idLista).get(idEntrada);
+	}
+
+
+	public TablaDeSimbolos() {
+		tablasDeSimbolos = new ArrayList<ArrayList<Entrada>>();
+		tablasDeSimbolos.add(new ArrayList<Entrada>());
+	}
+
+	public ArrayList<Entrada> getTablaDeSimbolosGeneral()
+	{
+		return tablasDeSimbolos.get(0);
+	}
+
+	public ArrayList<Entrada> getUltimaTablaDeSimbolosLocal()
+	{
+		return tablasDeSimbolos.get(tablasDeSimbolos.size()-1);
+		//return tablasDeSimbolos.getLast();
+	}
+
+	public ArrayList<ArrayList<Entrada>>  getTablaDeSimbolos()
+	{
+		return tablasDeSimbolos;
+	}
+
+
+
+	public int agregarEntrada(int idLista, Entrada entrada) {
+		/* SI NO EXISTE, AGREGA LA ENTRADA Y DEVUELVE SU INDICE */
+		if (!contieneEntrada(idLista, entrada)) {
+
+			tablasDeSimbolos.get(idLista).add(entrada);
+			int idRetorno = contador_id;
+			contador_id++;
+			entrada.setIdentificador(idRetorno);
+			return idRetorno;
+		}
+		/* SI EXISTE, NO AGREGA NADA, Y DEVUELVE SU INDICE */
+		else {
+			/*Buscamos el indice de la entrada que coincide, obtenemos esa entrada, y devolvemos su indice*/
+			int idEntrada = tablasDeSimbolos.get(idLista).indexOf(entrada); // buscamos en la lista una entrada
+			Entrada ent = tablasDeSimbolos.get(idLista).get(idEntrada);
+			return ent.getIdentificador();
+		}
+	}
+
+	public int agregarEntrada2(Entrada entrada) {
+
+
+		if(flag_atributos_funcion == true) { /* ESTAMOS DENTRO DEL PARENTESIS DE UNA FUNCION */
+
+			getUltimaTablaDeSimbolosLocal().add(entrada);
+			int indice = getUltimaTablaDeSimbolosLocal().indexOf(entrada);
+			Entrada ent = getUltimaTablaDeSimbolosLocal().get(indice);
+			ent.setIdentificador(contador_id++);
+			return ent.getIdentificador();
+		} 
+
+
+
+
+
+		/*LOCAL*/
+		if(flag_en_Local == true)
+		{ 	
+			if(getUltimaTablaDeSimbolosLocal().contains(entrada)) { /* YA EXISTE UNA ENTRADA LLAMADA IGUAL */
+				int indexEnt = getUltimaTablaDeSimbolosLocal().indexOf(entrada);
+				return getUltimaTablaDeSimbolosLocal().get(indexEnt).getIdentificador();
+			} else { /* NO EXISTE NINGUNA ENTRADA */		
+
+				if(flag_let == true) { /* ESTAMOS DECLARANDO DENTRO DE LA LOCAL */
+					/* LE CREAMOS UNA NUEVA ENTRADA */
+					getUltimaTablaDeSimbolosLocal().add(entrada);
+					entrada.setIdentificador(contador_id++);
+					return entrada.getIdentificador();
+				} else { /* ESTAMOS EN LOCAL, PERO NO EN SENTENCIA DECLARATIVA */
+
+					/* BUSCAMOS SI EXISTE EN LA GLOBAL*/
+					if(getTablaDeSimbolosGeneral().contains(entrada)) { /* EXISTE EN LA GLOBAL*/
+						int indexEnt = getTablaDeSimbolosGeneral().indexOf(entrada);
+						return getTablaDeSimbolosGeneral().get(indexEnt).getIdentificador();
+					} else { /* NO EXISTE EN LA GLOBAL */
+						/* ESTAMOS USANDO UNA VARIABLE QUE NO EXISTE EN NINGUNA PARTE*/
+						/*la declararemos como tipo int por defectpo*/
+						getTablaDeSimbolosGeneral().add(entrada);
+						entrada.setIdentificador(contador_id++);
+						entrada.setTipo(E_Tipo.ent);
+						return entrada.getIdentificador();
+
+					}
+				}
+			}
+		}
+		/* GLOBAL */
+		else {
+			/* COMPROBAMOS SI EXISTE O NO EN LA GLOBAL*/
+			if(getTablaDeSimbolosGeneral().contains(entrada)) { /* EXISTE EN LA GLOBAL */
+
+				/* Obtenemos el id de la entrada que ya existe */
+
+				int indexEnt = getTablaDeSimbolosGeneral().indexOf(entrada);
+				return getTablaDeSimbolosGeneral().get(indexEnt).getIdentificador();
+
+
+			} else { /* NO EXISTE EN LA GLOBAL */
+
+				if(flag_let == true) { /* NO EXISTE Y LA ESTAMOS DECLARANDO */
+
+					getTablaDeSimbolosGeneral().add(entrada);
+					entrada.setIdentificador(contador_id);
+					contador_id++;
+					return entrada.getIdentificador();
+
+				} else { /* NO EXISTE Y  NO ESTAMOS DECLARANDO */
+
+					getTablaDeSimbolosGeneral().add(entrada);
+					entrada.setIdentificador(contador_id);
+					entrada.setTipo(E_Tipo.ent);
+					contador_id++;
+					return entrada.getIdentificador();
+				}
+
+
+			}
+		}
+	}
+
+
+
+	public boolean contieneEntrada(int idLista, Entrada entrada) {
+		return tablasDeSimbolos.get(idLista).contains(entrada);
+
+	}
+
+	public int obtenerIdPos(int idLista,int pos) {
+		int tam = 0;
+
+		for(int i = 0; i < idLista; i++)
+		{
+			tam += tablasDeSimbolos.get(i).size();
+		}
+
+		tam += pos;
+		return tam;
+	}
+
+	public int obtenerIndice(int idLista, Entrada entrada) {
+		return tablasDeSimbolos.get(idLista).indexOf(entrada);
+	}
+
+	//	public int ultimoOcupado() {
+	//		return listaGlobal.getValue().size()-1;
+	//	}   
+	public void recalcularDesplazamientoEnTodasLasListas()
+	{
+		for (ArrayList<Entrada> tabla : tablasDeSimbolos) {
+			int ultimoDesp = 0;
+			for(Entrada ent : tabla) {
+				if(ent.getTipo() == E_Tipo.function)
+				{
+					continue;
+				}else {
+					if(tabla.size()==1)
+					{
+						ent.setDesplazamiento(ultimoDesp);
+						ultimoDesp+= obtenerTamanoTipo(ent);
+					} else {
+						int indexEnt = tabla.indexOf(ent);
+						if(indexEnt== 0) {
+							ent.setDesplazamiento(ultimoDesp);
+							ultimoDesp = ultimoDesp + obtenerTamanoTipo(ent);
+						} else {
+							ent.setDesplazamiento(ultimoDesp);
+							ultimoDesp= ultimoDesp + obtenerTamanoTipo(ent);
+						}
+					}
+					
+					
+				}
+				
+
+			}
+		}
+
+
+
+	}
+	public String toString() {
+		recalcularDesplazamientoEnTodasLasListas();
+		String contenido = "";
+		int cont = 1;
+		for (ArrayList<Entrada> elemento : tablasDeSimbolos) {
+
+			if (cont == 1)
+			{
+				contenido = contenido + "TABLA PRINCIPAL #"+ cont + ":\n" ; 
+
+			} else {
+				contenido = contenido + "TABLA LOCAL #"+ cont + ":\n" ;
+			}
+
+			for(Entrada ent : elemento)
+			{
+				contenido = contenido + ent.toString();
+
+			}
+			cont ++;
+		}
+		return contenido;
+	}
+
+
+
+}C:\Users\ISM\git\repository\proyectoPDF\src\Principal\tableador.java 
+package Principal;
+
+import java.util.*;
+
+public class tableador {
+    public static void main(String[] args) {
+    	
+        String input = "{10E=24, 0μ=7, 0ν=13, 18T=41, 0B=6, 10R=25, 0F=9, 10U=26, 10V=27, 50R=75, 10W=28, 54W=79, 50U=26, 50V=27, 50W=28, 35A=61, 0P=8, 15E=37, 47E=37, 0S=3, 9μ=7, 9ν=13, 23E=48, 15L=38, 9B=6, 47L=73, 9F=9, 15R=25, 47R=25, 15U=26, 23R=25, 15V=27, 35T=59, 47U=26, 15W=28, 47V=27, 91K=92, 23U=26, 47W=28, 23V=27, 23W=28, 83Q=89, 9P=21, 55W=80, 51U=76, 9S=3, 51V=27, 51W=28, 16E=39, 12E=33, 20B=45, 20C=46, 36H=64, 6μ=7, 6ν=13, 6B=6, 16R=25, 6F=9, 16U=26, 12R=25, 16V=27, 36T=62, 16W=28, 12U=26, 88T=90, 12V=27, 20S=3, 12W=28, 12X=34, 52V=77, 6P=19, 52W=28, 6S=3, 17E=40, 45B=45, 45C=71, 65E=83, 17R=25, 37Q=66, 17U=26, 17V=27, 69S=85, 17W=28, 45S=3, 81K=87, 65R=25, 65U=26, 65V=27, 53V=78, 65W=28, 53W=28}";
+
+        String[] items = input.replaceAll("[{}]", "").split(","); // Remove the curly braces and split the items
+
+        Map<String, Map<String, String>> table = new TreeMap<>();
+        Set<String> symbols = new TreeSet<>();
+
+        for (String item : items) {
+            String[] parts = item.trim().split("="); // Split the number-symbol and content
+            String numberSymbol = parts[0];
+            String content = parts[1];
+
+            String[] numberSymbolParts = numberSymbol.split("(?<=\\D)(?=\\d)|(?<=\\d)(?=\\D)"); // Split the number and symbol
+            String number = numberSymbolParts[0];
+            String symbol = numberSymbolParts[1];
+
+            table.putIfAbsent(number, new TreeMap<>());
+            table.get(number).put(symbol, content);
+            symbols.add(symbol);
+        }
+
+        // Print the table in CSV format
+        System.out.print(";");
+        for (String symbol : symbols) {
+            System.out.print(symbol + ";");
+        }
+        System.out.println();
+
+        for (Map.Entry<String, Map<String, String>> row : table.entrySet()) {
+            System.out.print(row.getKey() + ";");
+            for (String symbol : symbols) {
+                System.out.print(row.getValue().getOrDefault(symbol, " ") + ";");
+            }
+            System.out.println();
+        }
+    }
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorLexico\AccionesSemanticas.java 
+package proyectoPDL.analizadorLexico;
+
+import java.util.ArrayList;
+
+import Principal.TablaDeSimbolos;
+import proyectoPDL.analizadorLexico.Token.Tipo;
+
+
+public class AccionesSemanticas {
+
+
+	public String lex;
+	int  num;
+	ArrayList<Token> tokens = new ArrayList<>(); // nos se si esto deberia ir en esta clase
+    //public int contador_ID = 1;
+    TablaDeSimbolos tabla;
+
+
+    public AccionesSemanticas (TablaDeSimbolos tabla)
+    {
+    	this.tabla = tabla;
+    	
+    }
+	
+	public int accionSemantica(String accion, char c)
+	{
+		if (accion == null) {return 1;}
+		
+		else if (accion.equals("Ilex")) return  Ilex();
+		else if (accion.equals("G3")) return  G3(); 
+		else if (accion.equals("C")) return  C(c); 
+		else if (accion.equals("C+Ilex") )
+			{Ilex(); return C(c);  }
+ 		else if (accion.equals("G1"))  return G1();
+ 		else if (accion.equals("G2")) return   G2();
+ 		else if (accion.equals("G4")) return  G4();
+ 		else if (accion.equals("G5")) return  G5();
+ 		else if (accion.equals("G6")) return  G6();
+ 		else if (accion.equals("G7")) return  G7();
+ 		else if (accion.equals("G8")) return  G8();
+ 		else if (accion.equals("G9")) return  G9();
+ 		else if (accion.equals("G10")) return  G10();
+ 		else if (accion.equals("G11")) return  G11(c);
+ 		else if (accion.equals("Vini")) return  Vini(c);
+ 		else if (accion.equals("V")) return  V(c);
+ 		else if (accion.equals("G10+G11")) {G10(); return G11(c);} 
+		
+		return -1;
+		
+	}
+	
+	
+	
+	public int Ilex()
+	{
+		lex = "";
+		return 1;
+	}
+	
+	public int C(char c)
+	{
+		lex = lex + c;
+		return 1;
+	}
+	
+	
+	public int V(char c)
+	{
+		num = num*10 + Character.getNumericValue(c);
+		return 1;
+	}
+	
+	public int Vini(char c)
+	{
+		num = Character.getNumericValue(c);
+		return 1;
+	}
+	
+	
+	public int G1()
+	{
+		tokens.add(new Token(Tipo.AND));
+		return 1;
+	}
+	
+	public int G2()
+	{
+		tokens.add(new Token(Tipo.OR));
+		return 1;
+	}
+	
+	public int G3()
+	{
+		if(lex.length() <= 64) 
+		{
+			tokens.add(new Token(Tipo.CAD, lex));
+			return 1;
+		}
+		else 
+		{
+			 try 
+			 {
+				 throw new Exception("El lexema \""+ lex + "\" tiene más de 64 caracteres" );
+		     } 
+			 catch (Exception e) 
+			 {
+	            e.printStackTrace();
+	            System.exit(0);
+	         }
+			
+		}
+		return -1;
+	}
+	
+	
+	public int G4()
+	{
+		tokens.add(new Token(Tipo.NEQUAL));
+		return 1;
+	}
+	
+	public int G5()
+	{
+		tokens.add(new Token(Tipo.AUTODEC));
+		return 1;
+		
+	}
+	
+	public int G6()
+	{
+		
+		tokens.add(new Token(Tipo.RESTA));
+		return 0;
+		
+	}
+	
+	public int G7()
+	{
+		tokens.add(new Token(Tipo.EQUAL));
+		return 1;
+		
+	}
+	
+	public int G8()
+	{
+		tokens.add(new Token(Tipo.IGUAL));
+		return 0;
+		
+	}
+	
+	public int G9()
+	{
+		if(lex.equals("boolean") ) 
+		tokens.add(new Token(Tipo.BOOLEAN) );
+		else if(lex.equals("if") ) 
+		tokens.add(new Token(Tipo.IF) );
+		else if(lex.equals("function") ) 
+		tokens.add(new Token(Tipo.FUNCTION) );
+		else if(lex.equals("get") ) 
+		tokens.add(new Token(Tipo.GET) );
+		else if(lex.equals("int") ) 
+		tokens.add(new Token(Tipo.INT) );
+		else if(lex.equals("let") ) 
+		{
+		tokens.add(new Token(Tipo.LET) );
+		tabla.flag_let = true;
+		}
+		else if(lex.equals("put") ) 
+		tokens.add(new Token(Tipo.PUT) );
+		else if(lex.equals("return") ) 
+		tokens.add(new Token(Tipo.RETURN) );
+		else if(lex.equals("string") ) 
+		tokens.add(new Token(Tipo.STRING) );
+		else if(lex.equals("void") ) 
+		tokens.add(new Token(Tipo.VOID) );
+		else if(lex.equals("while") ) 
+		tokens.add(new Token(Tipo.WHILE) );
+		else if(lex.equals("get") ) 
+		tokens.add(new Token(Tipo.GET) );
+		else {
+		///insertarTS(lex)
+		Entrada ent = new Entrada(lex);
+		
+		
+		int posicion = tabla.agregarEntrada2(ent);
+		tokens.add(new Token(Tipo.ID, posicion) );
+		tabla.flag_let = false;
+		
+		
+//		if(tabla.flagLocal() == true)
+//		{	
+//				int posicion = tabla.agregarEntrada(0, ent);
+//				tokens.add(new Token(Tipo.ID, posicion) );
+//
+//		} else {
+//	
+//				//ent.tipo=E_Tipo.ent;
+//				int posicion = tabla.agregarEntrada(0, ent);
+//				tokens.add(new Token(Tipo.ID, posicion) );
+//		}
+		
+		return 0;
+		
+		}
+		return 0;
+
+	}
+		
+		public int G10()
+		{
+			if (num > 32767)
+			{
+				try {
+		            throw new Exception("El entero \""+ num + "\" tiene tiene un valor superior a 32767" );
+		        } catch (Exception e) {
+		            e.printStackTrace();
+		            System.exit(0);
+		        }
+
+			}
+			else {
+				tokens.add(new Token (Tipo.ENT, num));
+				return 0;
+				
+			}
+			
+			
+		return 0;
+		
+	}
+	
+	
+		public int G11(char c)
+		{
+			if ( c == '}' )   tokens.add(new Token (Tipo.LLAVC));
+			else if ( c == '{')    tokens.add(new Token (Tipo.LLAVA));
+			else if ( c == '(' )    tokens.add(new Token (Tipo.PARA));
+			else if ( c == ')' )    tokens.add(new Token (Tipo.PARC));
+			else if ( c == ',' )    tokens.add(new Token (Tipo.COMA));
+			else if (c == ';' )    tokens.add(new Token (Tipo.PYC));
+			else if (c == '+' )   tokens.add(new Token (Tipo.SUM) );
+			return 1;
+			
+		}
+	
+	
+	
+	
+	
+	
+
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorLexico\AFD.java 
+package proyectoPDL.analizadorLexico;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class AFD {
+
+	public static void main(String[] args) {
+		// TODO Auto-generated method stub
+		System.out.println("Hola");
+
+	
+		String est = "0";
+		String carac  = ";";
+		AFD afd = new  AFD();
+		int x = afd.tabla_estados.get(est+carac);
+		String y = afd.tabla_acciones.get(est+carac);
+		
+		System.out.println("Nos encontramos en  el  estado "+ est + " y hemos leido  el  caracter " + carac + " y nos corresponde irnos al estado "  + x + " y realizar  la  accion " + y);
+		
+		
+		
+	}
+
+    public Map<String, Integer> tabla_estados = new HashMap<String, Integer>();
+    public Map<String, String> tabla_acciones = new HashMap<String, String>();
+
+	private static String del = "\n\t ";
+	private static String l = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	private static String c3 = "{}(),;+";
+	private static String d = "0123456789";
+	private static String c1 = d+"_";
+	private static String c2 = d+"_"+l;
+    
+	private String base = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ{}(),;/|&\n\t\"-+=!\0_: ";
+	
+    public AFD()
+    {
+    	initTables();
+    	
+    }
+
+	public  String accion (int estado, char caracter) throws IllegalStateException, IllegalArgumentException
+	{	
+		
+		String key = String.valueOf(estado) +  String.valueOf(caracter);
+		
+		if(!esCaracterValido(caracter))
+		{
+			throw new  IllegalArgumentException();
+		}
+		if (!tabla_acciones.containsKey(key)) {
+            throw new IllegalStateException();
+        }
+		return tabla_acciones.get( key );
+			
+	}
+	
+	public  int estado (int estado, char caracter) throws IllegalStateException, IllegalArgumentException
+	{
+		String key = String.valueOf(estado) +  String.valueOf(caracter);
+		if(!esCaracterValido(caracter))
+		{
+			throw new  IllegalArgumentException();
+		}
+		
+		if (!tabla_estados.containsKey(key)) {
+            throw new IllegalStateException();
+        }
+		
+		
+		return tabla_estados.get( key );
+	}
+	
+//	public int estado(int estado, char caracter) throws CaracterValidoNoEsperadoException, CaracterNoValidoException {
+//	    String key = String.valueOf(estado) + String.valueOf(caracter);
+//	    if (!tabla_estados.containsKey(key)) {
+//	        throw new CaracterValidoNoEsperadoException(caracter);
+//	    }
+//	    if (!esCaracterValido(caracter)) {
+//	        throw new CaracterNoValidoException(caracter);
+//	    }
+//
+//	    return tabla_estados.get(key);
+//	}
+
+	
+	
+
+	
+	private  void putExpTablaEstados(String val, String val2, int val3, boolean bol) {
+		
+		// val = estado actual             val2 = caracter leido         val3 = estado siguiente          bool= si NOT.
+		
+		// 3 :   
+		
+		if(bol) {
+        for (char c : val2.toCharArray()) {
+            tabla_estados.put(val + c, val3);
+        }
+        
+        
+		}
+		
+		else {
+		
+			for (char c : base.toCharArray()) {
+				if( !val2.contains(String.valueOf(c)) )
+	            tabla_estados.put(val + c, val3);		
+	        }
+			
+			
+		}
+    }
+	
+	
+	private  void putExpTablaAcciones(String val, String val2, String val3, boolean bol) {
+		if(bol) {
+	        for (char c : val2.toCharArray()) 
+	        {
+	            tabla_acciones.put(val + c, val3);
+	        }
+		}
+		else 
+		{
+			for (char c : base.toCharArray()) 
+			{
+				if( !val2.contains(String.valueOf(c)) )
+	            tabla_acciones.put(val + c, val3);
+				
+	        }
+			
+		}
+    }
+	
+	
+	public  boolean esEstadoFinal(int estado)
+	{
+		if ( estado >= 11 && estado != 12 )
+			return true;
+		
+		
+		else return false;
+	}
+	
+	public boolean esCaracterValido( char c ) 
+	{
+		
+		return base.contains(String.valueOf(c));
+		
+	}
+	
+	
+//	"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ{}(),;/|&\n\t\"+-=!\0_"
+	private void initTables() {
+		
+		// estado 0
+		putExpTablaEstados("0",del, 0, true);
+		putExpTablaAcciones("0", del, null, true);
+		
+		tabla_acciones.put("0/", null);
+		tabla_estados.put("0/", 5);
+		
+		putExpTablaEstados("0",l+"_", 1, true);
+		putExpTablaAcciones("0", l+"_", "C+Ilex", true);
+		
+		tabla_acciones.put("0!", null);
+		tabla_estados.put("0!", 9);
+		
+		tabla_acciones.put("0\"", "Ilex");
+		tabla_estados.put("0\"", 2);
+		
+		tabla_acciones.put("0|", null);
+		tabla_estados.put("0|", 7);
+		
+		putExpTablaEstados("0",c3, 16, true);
+		putExpTablaAcciones("0", c3, "G11", true);
+
+		tabla_acciones.put("0=", null);
+		tabla_estados.put("0=", 6);
+		
+		putExpTablaEstados("0",d, 10, true);
+		putExpTablaAcciones("0", d, "Vini", true);
+		
+		tabla_acciones.put("0-", null);
+		tabla_estados.put("0-", 3);
+		
+		tabla_acciones.put("0&", null);
+		tabla_estados.put("0&", 8);
+		
+		//		tabla_acciones.put("0&", null);
+		//		tabla_estados.put("0&", 8);   QUE HACE ESTO AQUI?
+		
+		// ESTADO  1
+//		private static String del = "\n\t ";
+//		private static String l = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+//		private static String c3 = "{}(),;+";
+//		private static String d = "0123456789";
+//		private static String c1 = d+"_";
+//		private static String c2 = d+"_"+l;
+		
+		
+		putExpTablaEstados("1",l, 1, true);
+		putExpTablaAcciones("1", l, "C", true);
+		
+		putExpTablaEstados("1",c1, 4, true);
+		putExpTablaAcciones("1", c1, "C", true);
+		
+		putExpTablaEstados("1",d+l+"_", 23, false);
+		putExpTablaAcciones("1", d+l+"_", "G9", false);
+		
+		
+		// ESTADO  2
+		
+						putExpTablaEstados("2","\"", 2, false);
+						putExpTablaAcciones("2", "\"", "C", false);
+		
+		putExpTablaEstados("2","\"", 17, true);
+		putExpTablaAcciones("2", "\"", "G3", true);
+		
+		
+		// ESTADO  3
+		
+		tabla_acciones.put("3-", "G5");
+		tabla_estados.put("3-", 11);
+		
+		putExpTablaEstados("3","-", 15, false);
+		putExpTablaAcciones("3", "-", "G6", false);
+		
+		// ESTADO  4
+		
+		putExpTablaEstados("4",c2, 4, true);
+		putExpTablaAcciones("4", c2, "C", true);
+		
+		putExpTablaEstados("4",c2, 13, false);
+		putExpTablaAcciones("4", c2, "G9", false);
+		
+		
+		// ESTADO 5
+		// este esta pendiente de ponerle su error
+		tabla_acciones.put("5/", null);
+		tabla_estados.put("5/", 12);
+
+		// ESTADO 6
+		
+		tabla_acciones.put("6=", "G7");
+		tabla_estados.put("6=", 20);
+		
+		putExpTablaEstados("6","=", 21, false);
+		putExpTablaAcciones("6", "=", "G8", false);
+		
+		// ESTADO 7
+		// pendiente de tirar  erro si  no le el caracter 
+		
+		tabla_acciones.put("7|", "G2");
+		tabla_estados.put("7|", 18);
+		
+		// ESTADO 8
+		//error
+		
+		tabla_acciones.put("8&", "G1");
+		tabla_estados.put("8&", 14);
+		
+		// ESTADO 9
+		// error
+		
+		tabla_acciones.put("9=", "G4");
+		tabla_estados.put("9=", 19);
+		
+		// ESTADO  10
+		
+		putExpTablaEstados("10", d, 10, true);
+		putExpTablaAcciones("10", d, "V", true);
+		
+		putExpTablaEstados("10", d, 22, false);
+		putExpTablaAcciones("10", d, "G10", false);
+		
+		
+//		putExpTablaEstados("10", d+l+c3+"-&|=", 22, false);
+//		putExpTablaAcciones("10", d+l+c3+"-&|=", "G10", false);
+		
+//		putExpTablaEstados("10", c3, 22, true);
+//		putExpTablaAcciones("10", c3, "G10+G11", true);
+//		
+//		putExpTablaEstados("10", "-", 3, true);
+//		putExpTablaAcciones("10", "-", "G10", true);
+//		
+//		putExpTablaEstados("10", "&", 8, true);
+//		putExpTablaAcciones("10", "&", "G10", true);
+//		
+//		putExpTablaEstados("10", "|", 7, true);
+//		putExpTablaAcciones("10", "|", "G10", true);
+//		
+//		putExpTablaEstados("10", "=", 6, true);
+//		putExpTablaAcciones("10", "=", "G10", true);
+		
+		
+		
+//						putExpTablaEstados("10", d, 25, false);
+//						putExpTablaAcciones("10", d, "G10", false);
+		
+
+		// ESTADO  11
+		
+		
+		// ESTADO  11
+		
+		
+		// ESTADO  12
+		
+		putExpTablaEstados("12", "\n", 0, true);
+		putExpTablaAcciones("12", "\n", null, true);
+		
+		putExpTablaEstados("12", "\n", 12, false);
+		putExpTablaAcciones("12", "\n", null, false);
+		
+		// ESTADO  13
+		
+		// ESTADO  14
+		// ESTADO  15
+		// ESTADO  16
+		// ESTADO  17
+		// ESTADO  18
+		// ESTADO  19
+		// ESTADO 20
+		
+		
+		
+	}
+
+	
+	
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorLexico\Entrada.java 
+package proyectoPDL.analizadorLexico;
+
+import java.util.ArrayList;
+
+public class Entrada {
+
+	public enum E_Tipo {
+		ent, logico, cadena, vacio, tipo_ok, tipo_error, function
+	}
+	private int identificador;
+	private String lexema = "";
+	private E_Tipo tipo;
+	private int desplazamiento = -1;
+	private E_Tipo tipoRetorno;
+	private int numParam = 0;
+	private ArrayList<E_Tipo> tipoParamXX;
+	private String etiqFuncion = "";
+	
+	private boolean declarada = false;
+	
+	public Entrada(String lexema) {
+		this.lexema = lexema;
+		this.tipoParamXX = new ArrayList<E_Tipo>();
+	}
+	
+	public void setIdentificador(int identificador)
+	{
+		this.identificador = identificador;
+	}
+	public int getIdentificador()
+	{
+		return this.identificador;
+	}
+
+	public String getEtiqFuncion()
+	{
+		return etiqFuncion;
+	}
+	
+	public ArrayList<E_Tipo> getTipoParamXX()
+	{
+		return tipoParamXX;
+	}
+	
+	
+	public int getNumParam()
+	{
+		return numParam;
+	}
+	
+	public E_Tipo TipoRetorno()
+	{
+		return tipoRetorno;
+	}
+	
+	public int getDesplazamiento()
+	{
+		return desplazamiento;
+	}
+	
+	
+
+	
+	public String getLexema()
+	{
+		return lexema;
+	}
+	
+	public E_Tipo getTipo()
+	{
+		return tipo;
+	}
+	
+	
+	/* Este metodo es especial, porque nos servira para declarar solo en una ocasion */
+	public boolean setTipo(E_Tipo e_Tipo)
+	{
+		if(e_Tipo == E_Tipo.function)
+		{
+			this.tipo = e_Tipo;
+			return true;
+		}
+		
+		
+		if ( this.tipo == null ) { /* LA VARIABLE NO HA SIDO DECLARA TODAVÍA */
+			this.tipo = e_Tipo;
+			return true;
+		} else { /* LA VARIABLE YA HA SIDO DECLARADA */
+			return false;	
+		}
+	}
+
+	
+	public void setDesplazamiento(int desp)
+	{
+		this.desplazamiento = desp;
+	}
+	
+	public void setTipoRetorno(E_Tipo tipo)
+	{
+		this.tipoRetorno=tipo;
+	}
+	
+	
+	public void setNumParam(int numParam)
+	{
+		this.numParam = numParam;
+	}
+	
+	
+	public void setTipoParamXX(ArrayList<E_Tipo> tipoParamXX)
+	{
+		this.tipoParamXX = tipoParamXX;
+	}
+	
+	public void setTipoParam(E_Tipo tipo)
+	{
+		tipoParamXX.add(tipo);
+		numParam++;
+	}
+	
+	
+	
+	public void setEtiqFuncion(String etiqFuncion)
+	{
+		this.etiqFuncion = etiqFuncion;
+	}
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	public boolean equals(Object otra_entrada) {
+
+		Entrada otra_entrada1 = (Entrada) otra_entrada;
+		// tipo = ID <ID, 4>  lex= variable_1
+		// tipo2 = ID <ID, 5> lex= variable_2
+		if (otra_entrada1 == null)
+		{
+			return false;
+		}
+		
+		
+		if (otra_entrada1.lexema.equals(this.lexema)) {return true;}
+
+		return false;
+	}
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+	public String toString()
+	{
+		String contenido = "";
+		String elemento = lexema;
+		contenido = contenido + " * LEXEMA : "+ "'" + elemento + "'\n";
+		
+		String _tipo_="";
+		if(tipo != null) {_tipo_ = tipo.toString();}
+		contenido = contenido + "\t + tipo : " + "'" + _tipo_ + "'\n";
+		
+		if(desplazamiento>=0) {
+		String _desp_ = String.valueOf(desplazamiento);
+		contenido = contenido + "\t + despl : " + "'" + _desp_ + "'" + "\n";
+		}
+		
+		if(tipoRetorno != null)
+		{
+			
+		contenido = contenido + "\t + TipoRetorno : " + "'" + tipoRetorno.toString() + "'" + "\n";
+			
+		}
+		
+		if(numParam >= 0 && tipo == E_Tipo.function)
+		{
+			contenido = contenido + "\t\t + numParam : " + "'" + numParam + "'" + "\n";
+			int cont = 1;
+			for(E_Tipo t: tipoParamXX)
+			{
+				contenido = contenido + "\t\t\t + TipoParam" + cont +   " : " + "'" + t + "'" + "\n";
+				cont++;
+			}
+		}
+		
+		//if (!etiqFuncion.equals(""))
+		if(tipo == E_Tipo.function)
+		{
+			String etiqueta ="Etiq"+ lexema + "01";
+			contenido = contenido + "\t\t + EtiqFuncion : " + "'" + etiqueta + "'" + "\n";
+		}
+		
+		contenido = contenido + " ---------------    ----------------- \n" ;
+		
+		return contenido;
+	}
+
+	
+	
+	
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorLexico\MainALexico.java 
+package proyectoPDL.analizadorLexico;
+
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.PushbackReader;
+import java.util.ArrayList;
+
+import Principal.TablaDeSimbolos;
+import proyectoPDL.gestorErrores.GestorErrores;
+
+public class MainALexico {
+	
+    private PushbackReader pr;
+    private AccionesSemanticas aS;
+    private AFD afd;
+    private int estado_inicial = 0;
+    
+    public MainALexico(String nombreArchivo, TablaDeSimbolos tabla) throws IOException {
+        // Inicialización de variables y objetos
+        //TablaDeSimbolos tabla = new TablaDeSimbolos(); // Creación de una nueva tabla de símbolos
+        this.aS = new AccionesSemanticas(tabla); // Creación de un nuevo objeto de acciones semánticas
+        this.afd = new AFD(); // Creación de un nuevo objeto de AFD
+        // Lectura del archivo de entrada
+        FileReader fr = new FileReader(nombreArchivo);
+        this.pr = new PushbackReader(fr);
+    }
+    
+    public String getTabla() {
+    	
+    	
+    	return aS.tabla.toString();
+    }
+    
+
+    public Token siguienteToken() throws IOException {
+        int estado_actual = estado_inicial;
+        int c;
+        
+        // Generación de tokens hasta que se alcanza un estado final
+        boolean seguir = true;
+        while (seguir) {
+        	if ((c = pr.read()) == -1)
+				{
+					seguir = false;
+					c = ' ';
+				}	
+            if (afd.esEstadoFinal(estado_actual)) estado_actual = estado_inicial; // Si alcanzamos el estado final, reiniciamos el automata al estado inicial 0.
+
+            char ch = (char) c; // Convertimos el entero a carácter
+            if(ch == '\r') 
+            {
+            	//gestorErrores.sumarLinea();
+            	ch = ' ';
+            }
+            if(ch == '\n') 
+            {
+            	GestorErrores.sumarLineaLexico();
+
+            }
+ 
+			if (estado_actual == 2 && ch != '"')
+			{
+				String accion = "C";
+				aS.accionSemantica(accion, ch);	
+				continue;
+			}	
+			else if (estado_actual == 12 && ch != '\n')
+			{
+				continue;
+			}
+
+            
+            String accion = "";
+            int estado_siguiente = -1;
+            try {
+                accion = afd.accion(estado_actual, ch);
+                estado_siguiente = afd.estado(estado_actual, ch);
+            } catch (IllegalArgumentException e) {
+                System.err.println("Se encontró un caracter '" + ch + "' no es válido en la línea " + GestorErrores.getLineaLexico() +".");
+                System.exit(1);
+            } catch (IllegalStateException e) {
+                System.err.println("El carácter '" + ch + "' es válido pero no se esperaba en la línea "+GestorErrores.getLineaLexico() +".");
+                System.exit(1);
+            }
+
+            int ret = aS.accionSemantica(accion, ch);
+
+            if (ret != 1) {
+            	//if(ch != '\n')
+                pr.unread(c); // Devolvemos el carácter al flujo si ret != 1
+            }
+            estado_actual = estado_siguiente;
+
+            if (!aS.tokens.isEmpty()) {
+                return aS.tokens.remove(0); // con este añadimos y borramos
+            	//return aS.tokens.getLast();
+            }
+            
+        }
+
+        return null; // Fin del archivo
+    }
+    
+    
+    
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorLexico\Token.java 
+package proyectoPDL.analizadorLexico;
+
+public class Token {
+	
+	public enum Tipo {
+        BOOLEAN,
+        FUNCTION,
+        GET,
+        IF,
+        INT,
+        LET,
+        PUT,
+        RETURN,
+        STRING,
+        VOID,
+        WHILE,
+        AUTODEC,
+        ENT,
+        CAD,
+        ID,
+        IGUAL,
+        COMA,
+        PYC,
+        PARA,
+        PARC,
+        LLAVA,
+        LLAVC,
+        SUM,
+        RESTA,
+        AND,
+        OR,
+        NEQUAL,
+        EQUAL,
+      //  SUMA
+    }
+
+	
+//	
+//    // Enumeración para los tipos de tokens permitidos
+//	
+//	public static Token BOOLEAN;
+//	public static Token FUNCTION;
+//	public static Token GET;
+//	public static Token IF;
+//	public static Token INT;
+//	public static Token LET;
+//	public static Token PUT;
+//	public static Token RETURN;
+//	public static Token STRING;
+//	public static Token  VOID;
+//	public static Token WHILE;
+//	public static Token AUTODEC;
+//	public static Token  ENT;
+//	public static Token CAD;
+//	public static Token ID;
+//	public static Token IGUAL;
+//	public static Token COMA;
+//	public static Token PYC;
+//	public static Token PARA;
+//	public static Token PARC;
+//	public static Token LLAVA;
+//	public static Token LLAVC;
+//	public static Token SUM;
+//	public static Token RESTA;
+//	public static Token AND;
+//	public static Token OR;
+	
+
+    // Atributos de la clase Token
+    private Tipo tipo;
+    private String valor_str;
+    private Integer valor_int;
+    // Constructor de la clase Token
+    public Token(Tipo tipo) {
+        if( tipo != Tipo.ENT && tipo != Tipo.CAD &&  tipo != Tipo.ID )
+        {
+    	this.tipo = tipo;
+        }
+        else
+        {
+        	this.tipo =tipo;
+        }
+        //else System.out.println("UN ERROR");
+        
+    }
+    public Token(Tipo tipo, int valor) {
+        if( tipo == Tipo.ENT || tipo == Tipo.ID )
+        {
+    	this.tipo = tipo;
+    	this.valor_int = valor;
+        }
+        else System.err.println("UN ERROR JEJE");
+        
+    }
+    
+    public Token(Tipo tipo, String valor) {
+        if( tipo == Tipo.CAD )
+        {
+    	this.tipo = tipo;
+    	this.valor_str = valor;
+        }
+        else System.out.println("UN ERROR JEJE");
+        
+    }
+
+    // Métodos getter y setter para los atributos tipo y valor
+    public Tipo getTipo() {
+        return tipo;
+    }
+
+    public Object getValor() {
+    	 if( tipo == Tipo.ENT || tipo == Tipo.ID || tipo == Tipo.INT )
+    	 {
+    		 return valor_int;
+
+    	 }
+    	 else if ( tipo == Tipo.CAD )
+    	 {
+    		 return valor_str;
+    	 }
+    	 
+    	 else 
+    		 return null;
+    }
+
+    public String getRepresentacionString() {
+    	
+        switch (this.tipo) {
+            case IF:
+                return "α";
+            case ID:
+                return "β";
+            case LET:
+                return "γ";
+                
+            case WHILE:
+                return "δ";
+            case BOOLEAN:
+                return "ε";
+                
+            case PUT:
+                return "ζ";
+                
+            case RETURN:
+                return "η";
+            case GET:
+                return "θ";
+                
+            case OR:
+                return "ι";
+            case AND:
+                return "κ";
+                
+            case RESTA:
+                return "υ";
+            case AUTODEC:
+                return "ψ";
+                
+            case FUNCTION:
+                return "π";
+                
+            case VOID:
+                return "ρ";
+                
+            case INT:
+                return "σ";
+                
+            case STRING:
+                return "τ";
+                
+            case EQUAL:
+                return "ω";
+                
+            case NEQUAL:
+                return "φ";
+                
+            case CAD:
+                return "ξ";
+            case ENT:
+                return "ο";
+            case IGUAL:
+            	return "=";       
+            case COMA:
+            	return ",";
+            case PYC:
+            	return ";";
+            case PARA:
+            	return "(";
+            case PARC:
+            	return ")";
+            case LLAVA:
+            	return "{";
+            case LLAVC:
+            	return "}";
+            case SUM:
+            	return "+";
+            default:
+                return null;
+        }
+    }
+    
+    
+   public String getRepresentacionStringInv(String simbolo) {
+    	
+	   switch (simbolo) {
+	    case "α":
+	        return "if";
+	    case "β":
+	        return "id";
+	    case "γ":
+	        return "let";
+	    case "δ":
+	        return "while";
+	    case "ε":
+	        return "boolean";
+	    case "ζ":
+	        return "put";
+	    case "η":
+	        return "return";
+	    case "θ":
+	        return "get";
+	    case "ι":
+	        return "or";
+	    case "κ":
+	        return "and";
+	    case "υ":
+	        return "-";
+	    case "ψ":
+	        return "--";
+	    case "π":
+	        return "function";
+	    case "ρ":
+	        return "void";
+	    case "σ":
+	        return "int";
+	    case "τ":
+	        return "string";
+	    case "ω":
+	        return "==";
+	    case "φ":
+	        return "!=";
+	    case "ξ":
+	        return "cadena";
+	    case "ο":
+	        return "entero";
+	    case "=":
+	        return "=";
+	    case ",":
+	        return ",";
+	    case ";":
+	        return ";";
+	    case "(":
+	        return "(";
+	    case ")":
+	        return ")";
+	    case "{":
+	        return "{";
+	    case "}":
+	        return "}";
+	    case "+":
+	        return "+";
+	    default:
+	        return null;
+	} 
+	   
+    }
+
+    
+    
+    public String toString()
+    {
+    	if (getValor() == null)
+    	{
+    		
+    		return "< "+   getTipo() +" , "+ " "  + " >";
+    	}
+    	
+    	else if( getTipo() == Tipo.CAD)
+    	{
+    		return "< "+   getTipo() +" , \""+ getValor()  + "\" >";
+    	}
+    	else return "< "+   getTipo() +" , "+ getValor()  + " >";
+    }
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorSemantico\AnalizadorSemantico.java 
+package proyectoPDL.analizadorSemantico;
+
+import java.util.Stack;
+
+import Principal.TablaDeSimbolos;
+import proyectoPDL.analizadorLexico.Entrada;
+import proyectoPDL.analizadorLexico.Entrada.E_Tipo;
+import proyectoPDL.gestorErrores.ErrorSemantico;
+import proyectoPDL.gestorErrores.GestorErrores;
+
+public class AnalizadorSemantico {
+
+	TablaDeSimbolos tabla;
+	Stack<Atributo> pila;
+
+
+
+	public Stack<Atributo> getPila()
+	{
+		return pila;
+	}
+
+	public AnalizadorSemantico(TablaDeSimbolos tabla) {
+		this.tabla = tabla;
+		this.pila = new Stack<Atributo>();
+		pila.push(null);
+	}
+	/*
+  ___ ___ ___ _      _   ___   ___ ___ __  __   _   _  _ _____ ___ ___   _   ___ 
+ | _ \ __/ __| |    /_\ / __| / __| __|  \/  | /_\ | \| |_   _|_ _/ __| /_\ / __|
+ |   / _| (_ | |__ / _ \\__ \ \__ \ _|| |\/| |/ _ \| .` | | |  | | (__ / _ \\__ \
+ |_|_\___\___|____/_/ \_\___/ |___/___|_|  |_/_/ \_\_|\_| |_| |___\___/_/ \_\___/
+	 */
+
+
+	private Entrada entradaUltimaFuncion;
+
+	public boolean ejecutarAccionSemantica(int regla, int contador) throws ErrorSemantico {
+		regla++;
+		//Stack<String> pilaASint = pila;
+		Stack<Atributo> pilaASem = pila;
+
+		if (regla == 1) {
+			/* p’->P  */
+			Atributo P = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo P_ = new Atributo("P_", E_Tipo.tipo_ok, null);
+			if(P.tipo==E_Tipo.tipo_ok) {
+				vaciarPila(pilaASem, contador);
+
+				pilaASem.push(P_);
+				pilaASem.push(null);
+			}
+			else {
+				//System.err.println("ERROR: tipo_error");
+				//System.exit(0);
+				throw new ErrorSemantico("tipo_error");
+			}
+		} else if (regla == 2) {
+			/*P->BP*/
+			Atributo P = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo B = obtenerEnPilaAtributos(pilaASem, -1);
+
+			if(P.tipo == E_Tipo.tipo_ok  || B.tipo == E_Tipo.tipo_ok) {
+
+				Atributo P_ = new Atributo("P", E_Tipo.tipo_ok, null);
+
+				vaciarPila(pilaASem, contador);
+				pilaASem.push(P_);
+				pilaASem.push(null);
+
+			} else {
+				//System.err.println("ERROR: tipo_error");
+				//System.exit(0);
+				throw new ErrorSemantico("tipo_error");
+			}
+
+		} else if (regla == 3) {
+			// P->FP
+			Atributo F = obtenerEnPilaAtributos(pilaASem, -1);
+
+			Atributo P = new Atributo("P", F.tipo, null);
+
+			vaciarPila(pilaASem, contador);
+
+			pilaASem.push(P);
+			pilaASem.push(null);
+		} else if (regla == 4) {
+			/* P->λ */
+			pilaASem.push(new Atributo("P", E_Tipo.tipo_ok, null));
+			pilaASem.push(null);
+		} else if (regla == 5) {
+			// B->if (E) S
+			Atributo S = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo E = obtenerEnPilaAtributos(pilaASem, -2);
+
+			Atributo B;
+
+			if(E.tipo == E_Tipo.logico && S.tipo == E_Tipo.tipo_ok){
+
+				B = new Atributo("B", E_Tipo.tipo_ok , null);
+				vaciarPila(pilaASem, contador);
+				pilaASem.push(B);
+				pilaASem.push(null);
+
+			} else {
+				B = new Atributo("B", E_Tipo.tipo_error , null);
+				System.err.println("sencencia if incorrecta.");
+				//System.exit(0);
+				if(E.tipo != E_Tipo.logico) throw new ErrorSemantico("En la sentencia if, el valor de la hipotesis es '" + E.tipo + "' en lugar de 'logico'");
+				if(S.tipo != E_Tipo.tipo_ok) throw new ErrorSemantico("En a sentencia if, el valor de la conclusion es '" + S.tipo + "' en lugar de 'tipo_ok'. Es decir, la conclusión no es valida");
+
+			}
+
+
+
+		} else if (regla == 6) {
+			/*    B-> let id T;    */
+			
+			Atributo T = obtenerEnPilaAtributos(pilaASem, -1);
+			Atributo B;
+
+			if (T.getTipo() == null) {
+				B = new Atributo("B", E_Tipo.tipo_error, null);
+				//System.exit(0);
+				throw new ErrorSemantico("El tipo declarado no es correcto.");
+			}
+
+
+			B = new Atributo("B", E_Tipo.tipo_ok, null);
+			Atributo id = obtenerEnPilaAtributos(pilaASem, -2);
+			// tabla.insertarDatoTS("tipo", id_atrib.getEnt().ge, T_atrib.getTipo());
+			/* ## AVISO ## : hacer los cambios pertinentes en insertarDatoTS */
+
+			if(id.getEnt().setTipo(T.getTipo()) == false) { /* ESTA VARIABLE YA HA SIDO DECLARADA */
+				B = new Atributo("B", E_Tipo.tipo_error, null);
+				//System.exit(0);
+				throw new ErrorSemantico("La variable '" + id.getEnt().getLexema() + "' ya ha sido declarada. Es decir, se esta volviendo a declarar por segunda vez en el mismo ámbito.");
+			}
+			vaciarPila(pilaASem, contador);
+			pilaASem.push(B);
+			pilaASem.push(null);
+			//			tabla.flag_declarando=false;
+		} else if (regla == 7) {
+			// B->S
+			Atributo S = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo B = new Atributo("B", S.getTipo(), null);
+
+			vaciarPila(pilaASem, contador);
+			pilaASem.push(B);
+			pilaASem.push(null);
+		} else if (regla == 8) {
+			// B -> while ( E ) { C }
+
+			Atributo C = obtenerEnPilaAtributos(pilaASem, -1);
+			Atributo E = obtenerEnPilaAtributos(pilaASem, -4);
+
+			if(E.tipo == E_Tipo.logico && C.tipo == E_Tipo.tipo_ok)
+			{
+				Atributo B = new Atributo("B", E_Tipo.tipo_ok, null);
+
+
+				vaciarPila(pilaASem, contador);
+				pilaASem.push(B);
+				pilaASem.push(null);
+
+
+			} else {
+				Atributo B = new Atributo("B", E_Tipo.tipo_error, null);
+				if(E.tipo != E_Tipo.logico) { throw new ErrorSemantico("El valor dentro del parentesis (hipótesis) es tipo '" + E.tipo +"', cuando debería ser de tipo 'logico'."); } 
+				if(C.tipo != E_Tipo.tipo_ok) { throw new ErrorSemantico("Las conclusiones no son validas."); }
+
+			}
+
+		} else if (regla == 9) {
+			// T-> int
+			// String nombre, E_Tipo tipo, Entrada ent
+			Atributo at1 = new Atributo("T", E_Tipo.ent, null);
+			meterEnPilaAtributos(pilaASem, 0, at1, 1);
+		} else if (regla == 10) {
+			// T-> boolean
+			Atributo at1 = new Atributo("T", E_Tipo.logico, null);
+			meterEnPilaAtributos(pilaASem, 0, at1, 1);
+		} else if (regla == 11) {
+			// T-> string
+			Atributo at1 = new Atributo("T", E_Tipo.cadena, null);
+			meterEnPilaAtributos(pilaASem, 0, at1, 1);
+		} else if (regla == 12) {
+			// S->id = E;
+			Atributo E = obtenerEnPilaAtributos(pilaASem, -1);
+			Atributo id = obtenerEnPilaAtributos(pilaASem, -3);
+			Atributo S = new Atributo("S", null, null);
+			if(E.tipo == id.tipo) {
+				S.tipo = E_Tipo.tipo_ok;
+
+				vaciarPila(pilaASem, contador);
+				pilaASem.push(S);
+				pilaASem.push(null);
+			} else {
+
+				S.setTipo(E_Tipo.tipo_error);
+				throw new ErrorSemantico("Los tipos de las asignaciones no son equivalentes. '" + id.getTipo() + "' = '" + E.tipo +"'.");
+			}
+
+
+		} else if (regla == 13) {
+			// S-> id (L);   // Este es de la funciones tipo function (a,b,c,d)
+			Atributo L = obtenerEnPilaAtributos(pilaASem, -2);
+			Atributo id = obtenerEnPilaAtributos(pilaASem, -4);
+			Atributo S = new Atributo("S", null, null);
+
+			if (id.tipo == E_Tipo.function && L.tipo == E_Tipo.tipo_ok) {
+				S.setTipo(id.tipo); /* Es una llamada */
+				vaciarPila(pilaASem, contador);
+				pilaASem.push(S);
+				pilaASem.push(null);
+			} else {
+				S.setTipo(E_Tipo.tipo_error);
+				if(id.tipo != E_Tipo.function) throw new ErrorSemantico("El id no es tipo funcion");
+				if(L.tipo != E_Tipo.tipo_ok) throw new ErrorSemantico("Los atributos no son correctos");
+
+			}
+		} else if (regla == 14) {
+			// S-> put E;
+			Atributo E = obtenerEnPilaAtributos(pilaASem, -1);
+			Atributo S = new Atributo("S", null, null);
+
+			if (E.tipo == E_Tipo.cadena || E.tipo == E_Tipo.ent) {
+				S.setTipo(E_Tipo.tipo_ok);
+				vaciarPila(pilaASem, contador);
+				pilaASem.push(S);
+				pilaASem.push(null);
+			} else {
+				S.setTipo(E_Tipo.tipo_error);
+				throw new ErrorSemantico("Tipo no adecuado. Debería ser o 'cad' o 'ent', pero tenemos: put '" + E.tipo + "';.");
+
+			}
+		} else if (regla == 15) {
+			// S->get id;
+			Atributo id = obtenerEnPilaAtributos(pilaASem, -1);
+			Atributo S = new Atributo("S", null, null);
+
+			if (id.tipo == E_Tipo.ent || id.tipo == E_Tipo.cadena) {
+				S.tipo = E_Tipo.tipo_ok;
+				vaciarPila(pilaASem, contador);
+				pilaASem.push(S);
+				pilaASem.push(null);
+
+			} else {
+				S.tipo = E_Tipo.tipo_ok;
+				throw new ErrorSemantico("Tipo no adecuado. Debería ser o 'cad' o 'ent', pero tenemos: get '" + id.tipo + "';.");
+
+			}
+
+		} else if (regla == 16) {
+			// S-> return X;
+			Atributo X = obtenerEnPilaAtributos(pilaASem, -1);
+
+			if (entradaUltimaFuncion.TipoRetorno() != X.tipo) {
+				throw new ErrorSemantico("El valor retorno de la funcion '"+ entradaUltimaFuncion.getLexema() +"' no es igual al tipo de la función. Se halló '" + X.tipo + "', y se esperaba '" + entradaUltimaFuncion.TipoRetorno() + "'.");
+				//System.exit(0);
+			} else {
+				Atributo S = new Atributo("S", E_Tipo.tipo_ok, null);
+				vaciarPila(pilaASem, contador);
+				pilaASem.push(S);
+				pilaASem.push(null);
+			}
+
+		} else if (regla == 17) {
+			// L->EQ
+			Atributo E = obtenerEnPilaAtributos(pilaASem, -1);
+			Atributo Q = obtenerEnPilaAtributos(pilaASem, 0);
+
+			if (Q.tipo != E_Tipo.tipo_error && E.tipo != E_Tipo.tipo_error) {
+				Atributo L = new Atributo("L", E_Tipo.tipo_ok, null);
+				vaciarPila(pilaASem, contador);
+				pilaASem.push(L);
+				pilaASem.push(null);
+			} else {
+				throw new ErrorSemantico("tipo_error en regla 17.");
+
+			}
+		} else if (regla == 18) {
+			// L-> λ
+			pilaASem.push(new Atributo("L", E_Tipo.tipo_ok, null));
+			pilaASem.push(null);
+
+		} else if (regla == 19) {
+			// Q-> ,EQ
+			Atributo E = obtenerEnPilaAtributos(pilaASem, -1);
+			Atributo Q = obtenerEnPilaAtributos(pilaASem, 0);
+			if (Q.tipo != E_Tipo.tipo_error && E.tipo != E_Tipo.tipo_error) {
+				Atributo Q_ = new Atributo("Q", E_Tipo.tipo_ok, null);
+				vaciarPila(pilaASem, contador);
+				pilaASem.push(Q_);
+				pilaASem.push(null);
+			} else {
+				throw new ErrorSemantico("tipo_error en regla 19.");
+				//System.exit(0);
+			}
+		} else if (regla == 20) {
+			// Q-> λ
+			pilaASem.push(new Atributo("Q", E_Tipo.tipo_ok, null));
+			pilaASem.push(null);
+
+		} else if (regla == 21) {
+			// X-> E
+			Atributo E = obtenerEnPilaAtributos(pilaASem, 0);
+
+			Atributo X = new Atributo("X", E.tipo, null);
+
+			vaciarPila(pilaASem, contador);
+
+			pilaASem.push(X);
+			pilaASem.push(null);
+		} else if (regla == 22) {
+			// X-> λ
+			pilaASem.push(new Atributo("X", E_Tipo.tipo_ok, null));
+			pilaASem.push(null);
+
+		} else if (regla == 23) {
+			// E -> E || R
+			Atributo R = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo E = obtenerEnPilaAtributos(pilaASem, -2);
+			Atributo E_ = new Atributo("E", null, null);
+			if (E.tipo == E_Tipo.logico && R.tipo == E_Tipo.logico) {
+				E.setTipo(E_Tipo.logico);
+				vaciarPila(pilaASem, contador);
+				pilaASem.push(E);
+				pilaASem.push(null);
+			} else {
+				E_.setTipo(E_Tipo.tipo_error);
+				throw new ErrorSemantico("Operacion OR entre tipos incorrectos. Los 2 operandos deberian ser lógicos, sin embargo tenemos: '"+ E.tipo +"' || '" + R.tipo + "'.");
+			}
+		} else if (regla == 24) {
+			// E-> R
+			Atributo R = obtenerEnPilaAtributos(pilaASem, 0);
+
+			Atributo E = new Atributo("E", R.tipo, null);
+
+			vaciarPila(pilaASem, contador);
+
+			pilaASem.push(E);
+			pilaASem.push(null);
+		} else if (regla == 25) {
+			// R -> R&&U
+			Atributo U = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo R = obtenerEnPilaAtributos(pilaASem, -2);
+			Atributo R_ = new Atributo("R", null, null);
+			if (U.tipo == E_Tipo.logico && R.tipo == E_Tipo.logico) {
+				R_.setTipo(E_Tipo.logico);
+				vaciarPila(pilaASem, contador);
+				pilaASem.push(R_);
+				pilaASem.push(null);
+			} else {
+				R_.setTipo(E_Tipo.tipo_error);
+				throw new ErrorSemantico("Operacion AND entre tipos incorrectos. Los 2 operandos deberian ser lógicos, sin embargo tenemos: '"+ R.tipo +"' && '" + U.tipo + "'.");
+
+
+			}
+		} else if (regla == 26) {
+			// R-> U
+			Atributo U = obtenerEnPilaAtributos(pilaASem, 0);
+
+			Atributo R = new Atributo("R", U.tipo, null);
+
+			vaciarPila(pilaASem, contador);
+
+			pilaASem.push(R);
+			pilaASem.push(null);
+		} else if (regla == 27) {
+			// U-> U = = V
+			Atributo U = obtenerEnPilaAtributos(pilaASem, -2);
+			Atributo V = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo U_ = new Atributo("U", null, null);
+			if ( (U.tipo == V.tipo) && (U.tipo == E_Tipo.ent )   ) {
+				U_.tipo = E_Tipo.logico;
+				vaciarPila(pilaASem, contador);
+				pilaASem.push(U_);
+				pilaASem.push(null);
+			} else {
+				U_.tipo = E_Tipo.tipo_error;
+				throw new ErrorSemantico("Operacion EQUALS entre tipos incorrectos. Los 2 operandos deberian ser 'ent', sin embargo tenemos: '"+ U.tipo +"' == '" + V.tipo + "'.");
+			}
+
+		} else if (regla == 28) {
+			// U-> U != V
+			Atributo U = obtenerEnPilaAtributos(pilaASem, -2);
+			Atributo V = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo U_ = new Atributo("U", null, null);
+			if ( (U.tipo == V.tipo) && (U.tipo == E_Tipo.ent )   ) {
+				U_.tipo = E_Tipo.logico;
+			} else {
+				U_.tipo = E_Tipo.tipo_error;
+				throw new ErrorSemantico("Operacion NO EQUALS entre tipos incorrectos. Los 2 operandos deberian ser 'ent', sin embargo tenemos: '"+ U.tipo +"' != '" + V.tipo + "'.");
+
+			}
+
+			vaciarPila(pilaASem, contador);
+			pilaASem.push(U_);
+			pilaASem.push(null);
+		} else if (regla == 29) {
+			// U-> V
+			Atributo V = obtenerEnPilaAtributos(pilaASem, 0);
+
+			Atributo U = new Atributo("U", V.tipo, null);
+
+			vaciarPila(pilaASem, contador);
+
+			pilaASem.push(U);
+			pilaASem.push(null);
+
+		} else if (regla == 30) {
+			// V-> V + W
+			Atributo V = obtenerEnPilaAtributos(pilaASem, -2);
+			Atributo W = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo V_antecedente = new Atributo("V", null, null);
+			if (V.tipo == E_Tipo.ent && W.tipo == E_Tipo.ent) {
+				V_antecedente.tipo = E_Tipo.ent;
+			} else {
+				V_antecedente.tipo = E_Tipo.tipo_error;
+				throw new ErrorSemantico("Operacion SUMA entre tipos incorrectos. Los 2 operandos deberian ser 'ent', sin embargo tenemos: '"+ V.tipo +"' + '" + W.tipo + "'.");
+			}
+
+			vaciarPila(pilaASem, contador);
+			pilaASem.push(V_antecedente);
+			pilaASem.push(null);
+		} else if (regla == 31) {
+			// V->V-W
+			Atributo V = obtenerEnPilaAtributos(pilaASem, -2);
+			Atributo W = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo V_antecedente = new Atributo("V", null, null);
+			if (V.tipo == E_Tipo.ent &&  W.tipo == E_Tipo.ent) {
+				V_antecedente.tipo = E_Tipo.ent;
+			} else {
+				V_antecedente.tipo = E_Tipo.tipo_error;
+				throw new ErrorSemantico("Operacion RESTA entre tipos incorrectos. Los 2 operandos deberian ser 'ent', sin embargo tenemos: '"+ V.tipo +"' - '" + W.tipo + "'.");
+			}
+
+			vaciarPila(pilaASem, contador);
+			pilaASem.push(V_antecedente);
+			pilaASem.push(null);
+		} else if (regla == 32) {
+			// V->W 
+			Atributo W = obtenerEnPilaAtributos(pilaASem, 0);
+
+			if (W.getTipo() == E_Tipo.cadena || W.getTipo() == E_Tipo.ent || W.getTipo() == E_Tipo.logico || W.getTipo() == E_Tipo.function) {
+
+				Atributo V = new Atributo("V", W.tipo, null);
+
+				vaciarPila(pilaASem, contador);
+
+				pilaASem.push(V);
+				pilaASem.push(null);
+			} else {
+
+				throw new ErrorSemantico("tipo_error en regla 32");
+
+			}
+		} else if (regla == 33) {
+			// W-> id
+			Atributo id = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo W = new Atributo("W", id.tipo, null);
+			vaciarPila(pilaASem, contador);
+
+			pilaASem.push(W);
+			pilaASem.push(null);
+		} else if (regla == 34) {
+			// W-> ( E )   // Esto es para las de tipo (a+b) --> ( E ) oo (a!=b) --> ( E )
+			Atributo E = obtenerEnPilaAtributos(pilaASem, -1);
+			
+			if (E.tipo == E_Tipo.logico || E.tipo == E_Tipo.ent || E.tipo == E_Tipo.cadena) {
+
+				Atributo W = new Atributo("W", E.tipo , null);
+				vaciarPila(pilaASem, contador);
+
+				pilaASem.push(W);
+				pilaASem.push(null);
+
+			} else {
+				throw new ErrorSemantico("El valor entre parentesis deberia ser o bien 'logico' o 'ent', sin embargo tenemos: ('" + E.tipo +"')");
+				//System.exit(0);
+			}
+		} else if (regla == 35) {
+			// W-> id ( L )      ## esta es para tipos "function(id,id,num...)" ## 
+			
+			Atributo L = obtenerEnPilaAtributos(pilaASem, -1);
+			Atributo id = obtenerEnPilaAtributos(pilaASem, -3);
+			if (id.tipo == E_Tipo.function && L.tipo == E_Tipo.tipo_ok) {
+
+				Atributo W = new Atributo("W", id.ent.TipoRetorno(), null);
+				vaciarPila(pilaASem, contador);
+
+				pilaASem.push(W);
+				pilaASem.push(null);
+
+			} else {
+
+				if (id.tipo != E_Tipo.function) throw new ErrorSemantico("El identificador '"+id.getEnt().getLexema() + "' es de tipo '" + id.tipo + "', cuando debería ser de tipo 'function'. (Es decir, no esta declarada)");
+				if (L.tipo != E_Tipo.tipo_ok) throw new ErrorSemantico("Los argumentos dentre parentesis no son validos");
+
+			}
+
+		} else if (regla == 36) {
+			// W-> ent
+			Atributo W = new Atributo("W", E_Tipo.ent, null);
+
+			vaciarPila(pilaASem, contador);
+			pilaASem.push(W);
+			pilaASem.push(null);
+
+		} else if (regla == 37) {
+			// W-> cad
+			Atributo W = new Atributo("W", E_Tipo.cadena, null);
+			vaciarPila(pilaASem, contador);
+			pilaASem.push(W);
+			pilaASem.push(null);
+		} else if (regla == 38) {
+			// W-> --id
+			Atributo id = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo W_antecedente = new Atributo("W", null, null);
+			if (id.tipo == E_Tipo.ent) {
+				W_antecedente.tipo = E_Tipo.ent;
+			} else {
+				W_antecedente.tipo = E_Tipo.tipo_error;
+				throw new ErrorSemantico("Se esta intentando PREDECREMENTAR un valor que no es entero. Tenemos: --'" + id.getTipo()+"'.");
+			}
+
+			vaciarPila(pilaASem, contador);
+			pilaASem.push(W_antecedente);
+			pilaASem.push(null);
+		} else if (regla == 39) {
+			// F-> F1 { C }
+			Atributo C = obtenerEnPilaAtributos(pilaASem, -1);
+			Atributo F1 = obtenerEnPilaAtributos(pilaASem, -3);
+			tabla.flag_en_Local = false;
+			entradaUltimaFuncion = null;
+
+			if (C.tipo == F1.tipo && F1.tipo == E_Tipo.tipo_ok) {
+				Atributo F = new Atributo("F", E_Tipo.tipo_ok, null);
+
+				vaciarPila(pilaASem, contador);
+
+				pilaASem.push(F);
+				pilaASem.push(null);
+			} else {
+
+				if( F1.tipo != E_Tipo.tipo_ok )throw new ErrorSemantico("La funcion tiene un tipo incorrecto");
+				if( C.tipo != E_Tipo.tipo_ok )throw new ErrorSemantico("El contenido de la funcion es incorrecto");
+
+			}
+		} else if (regla == 40) {
+			// F1-> F2 ( A )
+			tabla.flag_atributos_funcion = false;
+			Atributo F2 = obtenerEnPilaAtributos(pilaASem, -3);
+			Atributo A = obtenerEnPilaAtributos(pilaASem, -1);
+
+			if (F2.tipo == E_Tipo.tipo_ok && (A.tipo == E_Tipo.tipo_ok || A.tipo == E_Tipo.vacio  )) {
+
+				Atributo F1 = new Atributo("F1", E_Tipo.tipo_ok, null);
+
+				vaciarPila(pilaASem, contador);
+
+				pilaASem.push(F1);
+				pilaASem.push(null);
+
+			} else {
+
+				if(F2.tipo != E_Tipo.tipo_ok) throw new ErrorSemantico("La declaracion de la funcion es incorrecta");
+				if(A.tipo != E_Tipo.tipo_ok) throw new ErrorSemantico("La declaracion de los argumetos de la funcion es incorrecta");
+
+			}
+
+		}
+
+		else if (regla == 41) {
+			// F2-> function id H
+			tabla.crearTablaLocal();
+			tabla.flag_en_Local = true;
+			tabla.flag_atributos_funcion = true;
+			/*
+			 * crear la tabla
+			 * EL A.Lex ya ha creado la variable id en la tabla global
+			 * cogemos id y en su entrada le metemos su tipo de retorno
+			 * obtener id.tipo := H.tipo
+			 * 
+			 * colapsamos la pila 3*(2) posiciones
+			 */
+
+			Atributo F2 = new Atributo("F2", null, null);
+			Atributo H = obtenerEnPilaAtributos(pilaASem, 0);
+			if (H.tipo == E_Tipo.vacio || H.tipo == E_Tipo.cadena || H.tipo == E_Tipo.ent || H.tipo == E_Tipo.logico ) {
+				Atributo id = obtenerEnPilaAtributos(pilaASem, -1);
+				id.ent.setTipoRetorno(H.tipo);
+				id.ent.setTipo(E_Tipo.function);
+				F2.tipo = E_Tipo.tipo_ok;
+				F2.ent = id.ent;
+
+				entradaUltimaFuncion = id.ent;
+
+			} else {
+
+				throw new ErrorSemantico("La declaracion de la funcion es incorrecta");
+			}
+
+			vaciarPila(pilaASem, contador);
+
+			pilaASem.push(F2);
+			pilaASem.push(null);
+
+		}
+
+		else if (regla == 42) {
+			// H->T
+			Atributo T = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo H = new Atributo("H", null, null);
+			H.tipo = T.tipo;
+
+			vaciarPila(pilaASem, contador);
+
+			pilaASem.push(H);
+			pilaASem.push(null);
+			// H_atrib.setTipo(T_atrib.getTipo());
+		} else if (regla == 43) {
+			// H-> void
+			Atributo H = new Atributo("H", E_Tipo.vacio, null);
+			vaciarPila(pilaASem, contador);
+			pilaASem.push(H);
+			pilaASem.push(null);
+		} else if (regla == 44) {
+			// A-> T id K
+			Atributo T = obtenerEnPilaAtributos(pilaASem, -2);
+			Atributo id = obtenerEnPilaAtributos(pilaASem, -1);
+			Atributo K = obtenerEnPilaAtributos(pilaASem, 0);
+
+			if (T.tipo == E_Tipo.ent || T.tipo == E_Tipo.cadena || T.tipo == E_Tipo.logico) {
+
+				id.ent.setTipo(T.tipo);
+				entradaUltimaFuncion.setTipoParam(T.tipo);
+				Atributo A = new Atributo("A", null, null);
+				A.setTipo(E_Tipo.tipo_ok);
+
+				/*
+				 * EL ANALIZADOR LEXICO YA HA INTORODUCIDO
+				 * EL VALOR de ID EN LA ENTRADA DONDE CORRESPONDE
+				 */
+
+				vaciarPila(pilaASem, contador);
+
+				pilaASem.push(A);
+				pilaASem.push(null);
+
+			} else {
+					throw new ErrorSemantico("El argumento '" + id.getEnt().getLexema() +"' se esta intentando declara con un tipo incorrecto. Deberia ser logico, cadena o entero.");
+			}
+
+		} else if (regla == 45) {
+			// A-> void
+			Atributo A = new Atributo("A", E_Tipo.vacio, null);
+			vaciarPila(pilaASem, contador);
+			pilaASem.push(A);
+			pilaASem.push(null);
+		} else if (regla == 46) {
+			// K -> , T id K
+			Atributo K = obtenerEnPilaAtributos(pilaASem, 0);
+			Atributo id = obtenerEnPilaAtributos(pilaASem, -1);
+
+			Atributo T = obtenerEnPilaAtributos(pilaASem, -2);
+
+			if ( (T.tipo == E_Tipo.ent || T.tipo == E_Tipo.cadena || T.tipo == E_Tipo.logico) && K.tipo==E_Tipo.tipo_ok) {
+				/*
+				 * EL ANALIZADOR LEXICO YA HA INTORODUCIDO
+				 * EL VALOR EN LA ENTRADA DONDE CORRESPONDE
+				 */
+				id.ent.setTipo(T.tipo);
+				entradaUltimaFuncion.setTipoParam(T.tipo);
+
+				Atributo K_ = new Atributo("K", E_Tipo.tipo_ok, null);
+				vaciarPila(pilaASem, contador);
+
+				pilaASem.push(K_);
+				pilaASem.push(null);
+
+			} else {
+				throw new ErrorSemantico("El argumento '" + id.getEnt().getLexema() +"' se esta intentando declara con un tipo incorrecto. Deberia ser logico, cadena o entero.");
+			}
+
+		} else if (regla == 47) {
+			// K-> λ
+			pilaASem.push(new Atributo("K", E_Tipo.tipo_ok, null));
+			pilaASem.push(null);
+		} else if (regla == 48) {
+			// C -> B C
+			Atributo B = obtenerEnPilaAtributos(pilaASem, -1);
+			Atributo C = obtenerEnPilaAtributos(pilaASem, 0);
+
+			if (B.tipo == E_Tipo.tipo_ok) {
+				Atributo C_ = new Atributo("C", B.tipo, null);
+				vaciarPila(pilaASem, contador);
+
+				pilaASem.push(C_);
+				pilaASem.push(null);
+
+			} else {
+				throw new ErrorSemantico("tipo_error regla 48.");
+			}
+
+		} else if (regla == 49) {
+			// C-> λ
+			pilaASem.push(new Atributo("C", E_Tipo.tipo_ok, null));
+			pilaASem.push(null);
+		}
+
+		return false;
+	}
+
+	public void vaciarPila(Stack<Atributo> pilila, int contador) {
+
+		for (int i = 0; i < contador * 2; i++) {
+			pilila.pop();
+		}
+	}
+
+	/*
+	 * Sustituimos
+	 * 0 ---> en el tope de la pila
+	 * -1 -> justo debajo del tope
+	 * -2 ...
+	 * 
+	 */
+	public void meterEnPilaAtributos(Stack<Atributo> pilila, int relPos, Atributo at, int modo) { /* modo 1 */
+		if (modo == 1) {
+			pilila.set(pilila.size() - 1 + relPos * 2 - 1, at);
+		}
+		/* modo 0 */
+		else if (modo == 0) {
+			pilila.set(pilila.size() - 1 + relPos, at);
+		}
+	}
+
+	public Atributo obtenerEnPilaAtributos(Stack<Atributo> pilila, int relPos) {
+
+		return pilila.get(pilila.size() - 1 + relPos * 2 - 1);
+	}
+
+
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorSemantico\Atributo.java 
+package proyectoPDL.analizadorSemantico;
+
+import proyectoPDL.analizadorLexico.Entrada.E_Tipo;
+import proyectoPDL.analizadorLexico.Entrada;
+
+public class Atributo {
+//	enum E_Valor{
+//		tipo_ok, tipo_error, vacio
+//		
+//	}
+	public String nombre;
+	public E_Tipo tipo;
+	//E_Valor valor;
+	public Entrada ent;
+	
+	public Atributo(String nombre, E_Tipo tipo, Entrada ent) {
+		// 		
+		this.nombre = nombre;
+		this.tipo = tipo;
+		this.ent = ent;
+//		valor = E_Valor.vacio;
+		//
+	}
+	
+	public Entrada getEnt() {
+		return this.ent;
+	}
+	
+	public E_Tipo getTipo() {
+		return this.tipo;
+	}
+	public void setTipo(E_Tipo tipo) {
+		this.tipo = tipo;
+	}
+	
+	
+	public String getNombre() {
+		return this.nombre;
+	}
+	
+	public void setNombre(String nombre) {
+		this.nombre = nombre;
+	}
+	
+	
+	public String toString() {
+		return "|"+nombre+":" +getTipo()+"|";
+	}
+	
+	
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorSintactico\AnalizadorSintactico.java 
+package proyectoPDL.analizadorSintactico;
+
+import java.util.ArrayList;
+import java.util.Set;
+import java.util.Stack;
+
+import Principal.TablaDeSimbolos;
+import proyectoPDL.analizadorLexico.Entrada;
+import proyectoPDL.analizadorLexico.Token.Tipo;
+import proyectoPDL.analizadorLexico.Token;
+import proyectoPDL.analizadorSemantico.AnalizadorSemantico;
+import proyectoPDL.analizadorSemantico.Atributo;
+import proyectoPDL.gestorErrores.ErrorSintactico;
+import proyectoPDL.gestorErrores.GestorErrores;
+
+public class AnalizadorSintactico {
+
+	private Automata automata;
+	private Stack<String> pila;
+	ArrayList<Integer> parse;
+	AnalizadorSemantico ASem;
+	TablaDeSimbolos tabla;
+
+
+	public AnalizadorSintactico(Automata automata, AnalizadorSemantico ASem, TablaDeSimbolos tabla) {
+		this.setAutomata(automata);
+		this.setPila(new Stack<String>());
+		this.parse = new ArrayList<>();
+		this.ASem = ASem;
+		this.tabla = tabla;
+	}
+	private int estado_anterior;
+/* Realizamos la  evaluacion del token  mediante el metodo tabular. */
+	public void MetodoTabular(String token, Token tok) throws Exception { // tenemos que ponerle de quien va a solicitar los
+		// tokens;
+
+		Stack<String> pilaASint = pila;
+		Stack<Atributo> pilaASem = ASem.getPila();
+		
+		// tenemos que poner que convierta los tokens en simbolos
+		String s = getPila().pop(); // estado
+		Pair<Character, Integer> siguiente_accion = getAutomata().Accion(s, token);
+		
+		System.out.print("");
+
+
+		if (siguiente_accion == null) {
+			String esperados = "";
+			
+			Estado est  = getAutomata().listaEstados.get(estado_anterior);
+			Set<String> terminales = getAutomata().lr1.gram.getTerminales();
+			Set<String> hola = getAutomata().listaTransiciones.get(est).keySet();
+			for(String transiciones : getAutomata().listaTransiciones.get(est).keySet())
+			{
+				//transiciones = transiciones;
+				if(terminales.contains(transiciones)) esperados+="'"+transiciones+"' | ";
+				
+			}
+			String mensaje ="";
+			if(esperados.length()>1)
+			{
+				esperados  =  Automata.sustitucionSimbolos(esperados);
+				esperados = esperados.substring(0, esperados.length()-3);
+				mensaje   = "Se esperaba: "  + esperados + "." ;
+			}
+			else {
+				
+				mensaje = "";
+			}
+
+			throw new ErrorSintactico(mensaje);
+		}
+
+		
+		else if (siguiente_accion.getKey() == 'd') // CASO 1 ACCION [s,a] = desp k
+		{
+			estado_anterior = siguiente_accion.getValue();
+			Entrada ent = null;
+			Atributo at = null;
+			if (tok.getTipo() == Tipo.ID) {
+				//ent = tabla.obtenerEntradaXidPos((int) tok.getValor());
+				ent = tabla.obtenerEntradaXidPos((int) tok.getValor());
+				at = new Atributo(token, ent.getTipo(), ent);
+			}
+
+			getPila().push(s);
+
+			getPila().push(token);
+			pilaASem.push(at);
+
+			getPila().push(String.valueOf(siguiente_accion.getValue())); // pedimos nuevo token. No hacemos nada
+			pilaASem.push(null);
+			
+			if(GestorErrores.getLineaLexico() > GestorErrores.getLineaSemSint())
+			{
+				GestorErrores.sumarLineaSemSint();
+			}
+			
+			
+		}
+
+		else if (siguiente_accion.getKey() == 'r') // CASO 2 ACCION[s,a] = red X X. A-->B
+		{
+			estado_anterior = siguiente_accion.getValue();
+			getPila().push(s);
+
+			/*
+			 * _____ ___ _ _ _ _ __ __ ___ ___
+			 * | __\ \ / /_\ | | | | | |/_\ | \/ |/ _ \/ __|
+			 * | _| \ V / _ \| |_| |_| / _ \| |\/| | (_) \__ \
+			 * |___| \_/_/_\_\____\___/_/ \_\_|__|_|\___/|___/
+			 * /_\ / __/ __|_ _/ _ \| \| | / __| __| \/ |
+			 * / _ \ (_| (__ | | (_) | .` | \__ \ _|| |\/| |
+			 * /_/ \_\___\___|___\___/|_|\_| |___/___|_| |_|
+			 * 
+			 */
+			/* obtenemos cual sera la siguiente accion a realizar */
+			int numeroDeRegla = siguiente_accion.getValue();
+			/* buscamos la regla que vamos a aplicar en la lista de reglas */
+			Pair<String, String> regla_a_aplicar = getAutomata().lr1.gram.getProduccionesNumero(numeroDeRegla);
+
+			int contador;
+			/* esta es la excepcion lamda */
+			if (regla_a_aplicar.getValue().equals("λ")) {
+				contador = 0;
+			} else {
+				contador = regla_a_aplicar.getValue().length(); // numero de caracteres que tiene el consecuente.
+			}
+
+			/* Ejecutamos la accion semantica */
+			ASem.ejecutarAccionSemantica(numeroDeRegla, contador);
+
+			/*
+ __   ___   ___ ___   _  __    __  ___  ___
+ \ \ / /_\ / __|_ _| /_\ | \  /  |/ _ \/ __|
+  \ V / _ \ (__ | | / _ \| |\/   | | (_) \__ \
+   \_/_/ \_\___|___/_/_\_\_|   |_|\___/|___/
+   | |    /_\   | _ \_ _| |    /_\
+   | |__ / _ \  | _/| | | |__ / _ \
+   |____/_/ \_\ |_| |___|____/_/ \_\
+			 * 
+			 */
+
+
+			for (int i = 0; i < contador * 2; i++) // sacamos elementos de la pila
+			{
+				getPila().pop();
+			}
+
+			String s_ = getPila().pop();
+			getPila().push(s_);
+			String antecedente = regla_a_aplicar.getKey();
+			Integer valGOTO = getAutomata().GOTO(s_, antecedente); // obtenemos GOTO[s' , A] y lo metemos en la pila ::->
+			// GOTO[estado s_, A antecedente de la regla a aplicar]
+
+			getPila().push(antecedente);
+			getPila().push(String.valueOf(valGOTO));
+			parse.add(numeroDeRegla);
+			// volvemos al principio, pero no pedimos token.
+			MetodoTabular(token, tok);
+
+		} else if (siguiente_accion.getKey() == 'a') // CASO 3 ACCION[s,a] = aceptar
+		{
+			getPila().push(s);
+		} else {
+			System.err.println("HAY UN ERROR INESPERADO");
+			//System.exit(0);
+			throw new ErrorSintactico("");
+		}
+
+	}
+
+
+
+	public String formatoFicheroGramatica() {
+		String buffer = "";
+
+		buffer = buffer + "Terminales = { ";
+		// Terminales = { a b c }
+		for (String x : getAutomata().lr1.gram.getTerminales()) {
+			buffer = buffer + x + " ";
+		}
+		buffer = buffer + "}\n";
+		// NoTerminales = { nterm1 nterm2 nterm3 ....... ntermM }
+		buffer = buffer + "NoTerminales = { ";
+		for (String x : getAutomata().lr1.gram.getNoTerminales()) {
+			buffer = buffer + x + " ";
+		}
+		buffer = buffer + "}\n";
+
+		// Axioma = ntermX
+
+		buffer = buffer + "Axioma = " + getAutomata().lr1.gram.getProduccionesNumero(0).getKey() + "\n"; // obtenemos el
+		// antecedente de la
+		// regla numero 0.
+		// E.D el axioma
+
+		buffer = buffer + "Producciones = { \n";
+		for (int i = 0; i < getAutomata().lr1.gram.getNumeroDeReglas(); i++) {
+			Pair<String, String> regla = getAutomata().lr1.gram.getProduccionesNumero(i);
+			String value = regla.getValue();
+			if (value.equals("λ")) {
+				value = "lambda";
+			}
+
+			buffer = buffer + regla.getKey() + " -> " + value + "\n";
+		}
+		buffer = buffer + "}\n";
+
+		return buffer;
+	}
+
+	public String formatoFicheroParse() {
+		String buffer = "Ascendente ";
+
+		for (int x : parse) {
+			buffer = buffer + x + " ";
+		}
+
+		return buffer + "\n";
+	}
+	public Stack<String> getPila() {
+		return pila;
+	}
+	public void setPila(Stack<String> pila) {
+		this.pila = pila;
+	}
+	public Automata getAutomata() {
+		return automata;
+	}
+	public void setAutomata(Automata automata) {
+		this.automata = automata;
+	}
+
+}C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorSintactico\Automata.java 
+package proyectoPDL.analizadorSintactico;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+public class Automata {
+	LR1 lr1;
+	List<Estado> listaEstados;
+	Map<Estado, Map<String, Estado>> listaTransiciones;
+	Boolean prints = false;
+	public Map<String, Pair<Character,Integer>> Accion;
+	public Map<String, Integer> GOTO;
+
+	public Automata(LR1 lr1) {
+		this.lr1 = lr1;
+		this.listaEstados = new ArrayList<>();
+		this.listaTransiciones = new HashMap<>();
+		this.Accion = new HashMap<String, Pair<Character,Integer>>();
+		this.GOTO = new HashMap<String, Integer>();
+	}
+	// N,P,S,*,(,),
+	public void construct() {
+		// Crear el estado inicial
+		ArrayList<String> temp = lr1.gram.getCharacters();
+		Set<Item> init = new HashSet<>();
+		Pair<String, String> primera_regla = lr1.gram.getProduccionesNumero(0);
+		Item inicio = new Item(primera_regla.getKey() , primera_regla.getValue(),0);
+		//init.add(new Item("Y", "E", 0));
+		init.add(inicio);
+		Estado initialState = new Estado(0, lr1.cierre(init));
+		listaEstados.add(initialState);
+
+		// Crear los demás estados y transiciones
+		int i = 0;
+		while (i < listaEstados.size()) {
+			Estado state = listaEstados.get(i);
+			if (prints) System.out.println("Obtenemos el estado numero "+ i + " que contiene:\n" + state + "\n----------\n");
+			Map<String, Estado> stateTransitions = new HashMap<>();
+
+
+			//for (String symbol : lr1.getGrammar().getProductions().keySet()) {
+
+			for (String symbol : temp) {
+				if (prints)	System.out.println("Transicion "+ symbol);
+				if (prints) System.out.println("Hacemos GOTO desde el estado I" + i );
+				Set<Item> gotoItems = lr1.GOTO(state.items, symbol);
+				if (prints) System.out.println(gotoItems.toString());
+
+				if (!gotoItems.isEmpty()) 
+				{
+					//busca en todos los estados existentes si existe una lista de items que sea igual a la que hemos obtenido antes
+					// si existe, se devuelve ese estado
+					// si no existe, se crea ese estado
+					Estado gotoState = buscaOCrea(gotoItems);
+					stateTransitions.put(symbol, gotoState);
+				}
+			}
+
+			listaTransiciones.put(state, stateTransitions);
+			i++;
+		}
+	}
+
+	public void constructTabla() 
+	{
+		for(Estado estadoActual:listaEstados)
+		{
+			int numeroEstadoActual = estadoActual.id;
+			
+			for(Item it :estadoActual.items)
+			{
+				String simboloDespuesPunto = it.getSimboloPunto(); //obtenemos el simbolo despues del punto
+				// A-> alfa . a beta
+				if (simboloDespuesPunto != null ) //no esta al final
+				{
+					if(!lr1.gram.producciones.containsKey(simboloDespuesPunto)) {
+					String key = numeroEstadoActual+simboloDespuesPunto;
+					//lr1.GOTO(new Set<Item>(it), puntoD);
+					Estado estadoSiguiente = listaTransiciones.get(estadoActual).get(simboloDespuesPunto); //en que estado terminamos patiendo del estado actual y transicionando con el elemento que haya despues del punto
+					if(estadoSiguiente != null) //devolverá null si no existe esa transicion.
+					{ 
+						int numeroEstadoSiguente = estadoSiguiente.id;
+						if(Accion.containsKey(key))
+						{
+							if(!Accion.get(key).equals(new Pair<Character,Integer>('d',numeroEstadoSiguente)))
+							System.out.println("ERROR\n");
+						}
+						Accion.put(key, new Pair<Character,Integer>('d',numeroEstadoSiguente));
+						//GOTO.put(key, null)
+					}
+					}
+
+				}
+				else  //esta al final
+				{
+					//ITEM:
+					//A -> alfa .
+					//A!=Y
+					String A = it.izquierda;
+					if (!A.equals("Y"))
+					{
+						
+						// Accion[numero estado actual, x] = reducir + posicion de A en la gramatica
+						// F -> xA  | Bb
+						// items de un estado F -> xA. 
+
+
+						//for(String prod : lr1.gram.producciones.get(it.izquierda) ) //obtenemos todas las producciones de A :: A -> alfa .
+						//{
+						//x = FOLLOW(lo que haya a la derecha de la A en la gramatica)
+						//Set<String> listaFollow = lr1.gram.follow(String.valueOf(prod.charAt(0)));  // este es nuestra x
+						Set<String> listaFollow = lr1.gram.follow(A);	
+						for(String x : listaFollow)
+						{
+							String key = numeroEstadoActual+x;
+							
+							// L -> lambda              L  lambda -->  numero x        L null    ->numero
+							String consecuente = it.derecha;
+							if (consecuente.equals(""))
+							{ consecuente = "λ";}
+							int posicionGram = lr1.gram.ordenProducciones.get(A).get(consecuente);
+							
+							if(Accion.containsKey(key))
+							{
+								if(!Accion.get(key).equals( new Pair<Character,Integer>('r',posicionGram)))
+								System.out.println("ERROR\n");
+							}
+							
+							
+							
+							
+							Accion.put(key, new Pair<Character,Integer>('r',posicionGram));
+						}
+						//}
+						//lr1.gram.follow(simboloDespuesPunto)
+
+
+					}
+					//    				ITEM:
+					//    				Y -> S.
+					else
+					{
+						//Accion[estado actual,$] = aceptar
+						String key = numeroEstadoActual+"$";
+						//int posicionGram = lr1.gram.ordenProducciones.get(A).get(it.derecha);
+						
+						if(Accion.containsKey(key))
+						{
+							if(!Accion.get(key).equals( new Pair<Character,Integer>('a',null)))
+							System.out.println("ERROR\n");
+						}
+						
+						Accion.put(key, new Pair<Character,Integer>('a',null));
+					}
+				}
+			}
+
+			//para todos los no terminales de A que cumplan GOTO
+			for(Map.Entry<String, Estado> entrada : listaTransiciones.get(estadoActual).entrySet())  //recorremos todas las transiciones posibles del estado X
+			{
+				String non_terminal = entrada.getKey();
+				if( lr1.gram.producciones.containsKey(non_terminal)  ) //si la transicion es de un simbolo no terminal, entonces:
+				{
+					String key = estadoActual.id+non_terminal;
+
+					
+					
+					if(GOTO.containsKey(key))
+					{
+						if(!GOTO.get(key).equals(  entrada.getValue().id   ))
+						System.out.println("ERROR\n");
+					}
+					
+					GOTO.put(key, entrada.getValue().id);
+				}
+			}
+		}
+
+	}
+
+	private Estado buscaOCrea(Set<Item> items) {
+		for (Estado state : listaEstados) {
+			if (state.items.equals(items)) {
+				return state;
+			}
+		}
+
+		Estado nuevoEstado = new Estado(listaEstados.size(), items);
+		listaEstados.add(nuevoEstado);
+		return nuevoEstado;
+	}
+
+
+	public void print() {
+		for (Estado state : listaEstados) {
+			System.out.println("Estado " + state.id + ":");
+			for (Item item : state.items) {
+				System.out.println("  " + item);
+			}
+			System.out.println("---TRANSISICIONES del estado "+state.id +" ---");
+			Map<String, Estado> estadoTransiciones = listaTransiciones.get(state);
+			if (estadoTransiciones != null) 
+			{
+				for (Map.Entry<String, Estado> entrada : estadoTransiciones.entrySet()) {
+					System.out.println("  " + entrada.getKey() + " -> Estado " + entrada.getValue().id);
+				}
+			}
+			System.out.println();
+		}
+	}
+	
+	// Accion[estado, a]
+	public Pair<Character,Integer> Accion(String estado, String transicion){
+		return Accion.get(estado+transicion);
+	}
+	
+	public Integer GOTO(String estado, String transicion)
+	{	
+		return GOTO.get(estado+transicion);	
+	}
+
+
+	public void printTabla() {
+		for (Estado state : listaEstados) {
+			System.out.println("Estado " + state.id + ":");
+			for (Item item : state.items) {
+				System.out.println("  " + item);
+			}
+			System.out.println("---TRANSISICIONES del estado "+state.id +" ---");
+			Map<String, Estado> estadoTransiciones = listaTransiciones.get(state);
+			if (estadoTransiciones != null) 
+			{
+				for (Map.Entry<String, Estado> entrada : estadoTransiciones.entrySet()) {
+					System.out.println("  " + entrada.getKey() + " -> Estado " + entrada.getValue().id);
+				}
+			}
+
+		}
+	}
+
+
+	public String toDot() {
+		StringBuilder dot = new StringBuilder("digraph Automata {\n");
+
+		for (Estado state : listaEstados) {
+			dot.append("    ").append(state.id).append(" [label=\"Estado ").append(state.id).append("\"];\n");
+		}
+
+		for (Map.Entry<Estado, Map<String, Estado>> entry : listaTransiciones.entrySet()) {
+			Estado fromState = entry.getKey();
+			for (Map.Entry<String, Estado> transition : entry.getValue().entrySet()) {
+				String symbol = transition.getKey();
+				Estado toState = transition.getValue();
+				dot.append("    ").append(fromState.id).append(" -> ").append(toState.id).append(" [label=\"").append(symbol).append("\"];\n");
+			}
+		}
+
+		dot.append("}\n");
+		return dot.toString();
+	}    
+	
+	
+	public static String sustitucionSimbolos(String input)
+	{
+        input = input.replace("α", " if ");
+        input = input.replace("β", " id ");
+        input = input.replace("γ", " let ");
+        input = input.replace("δ", " while ");
+        input = input.replace("ε", " boolean ");
+        input = input.replace("ζ", " put ");
+        input = input.replace("η", " return ");
+        input = input.replace("θ", " get ");
+        input = input.replace("ι", " || ");
+        input = input.replace("κ", " && ");
+        input = input.replace("ω", " == ");
+        input = input.replace("μ", " F1 ");
+        input = input.replace("ν", " F2 ");
+        input = input.replace("ξ", " cad ");
+        input = input.replace("ο", " ent ");
+        input = input.replace("π", " function ");
+        input = input.replace("ρ", " void " );
+        input = input.replace("σ", " int ");
+        input = input.replace("τ", " string " );
+        input = input.replace("ψ", " -- ");
+        input = input.replace("υ", " - ");
+        input = input.replace("φ", " != ");
+		
+        return input;
+	}
+	
+	
+	
+	
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorSintactico\Gramatica.java 
+package proyectoPDL.analizadorSintactico;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+public class Gramatica { 
+	Map<String, List<String>> producciones;
+	Map<String, Map<String, Integer>> ordenProducciones;
+	private int contador_de_reglas=0;
+
+	public Gramatica() {
+		//this.producciones = producciones;
+		this.producciones = new HashMap<String, List<String>>();
+		this.ordenProducciones = new HashMap<String, Map<String, Integer>>();
+		//this.ordenProducciones = ordenProducciones;
+	}
+	
+	
+
+	
+    public  Map<String, List<String>> convertirALL1() {
+        Map<String, List<String>> nuevasProducciones = new HashMap<>();
+
+        for (Map.Entry<String, List<String>> entry : producciones.entrySet()) {
+            String key = entry.getKey();
+            List<String> values = entry.getValue();
+
+            if (key.equals("S")) {
+                List<String> newValues = new ArrayList<>();
+                for (String value : values) {
+                    newValues.add(value + key + "'");
+                }
+                nuevasProducciones.put(key, newValues);
+            } else {
+                List<String> alpha = new ArrayList<>();
+                List<String> beta = new ArrayList<>();
+
+                for (String value : values) {
+                    if (value.startsWith(key)) {
+                        alpha.add(value.substring(1));
+                    } else {
+                        beta.add(value);
+                    }
+                }
+
+                if (!alpha.isEmpty()) {
+                    List<String> newValues = new ArrayList<>();
+                    for (String b : beta) {
+                        newValues.add(b + key + "'");
+                    }
+                    nuevasProducciones.put(key, newValues);
+
+                    newValues = new ArrayList<>();
+                    for (String a : alpha) {
+                        newValues.add(a + key + "'");
+                    }
+                    newValues.add("λ");
+                    nuevasProducciones.put(key + "'", newValues);
+                } else {
+                    nuevasProducciones.put(key, values);
+                }
+            }
+        }
+
+        return  nuevasProducciones;
+    }
+
+	
+	public  void addProduccion(String antecedente, List<String> consecuentes) {
+		producciones.put(antecedente, consecuentes);
+		HashMap<String, Integer> map = new HashMap<String, Integer>();
+		for(String produccion: consecuentes)
+		{
+			map.put(produccion, contador_de_reglas);
+			contador_de_reglas++;
+		}
+		ordenProducciones.put(antecedente, map);
+	}
+	
+	public int getNumeroDeReglas() {
+		return contador_de_reglas;
+		
+	}
+	
+	
+
+	public Map<String, List<String>> getProducciones() {
+		return producciones;
+	}
+	
+	
+	public Pair<String, String> getProduccionesNumero(int numero) {
+		
+		for (Map.Entry<String, Map<String, Integer>> entry : ordenProducciones.entrySet())
+		{
+			// imaginate hacer esta puta locura para solo obtener el orden en el que esta en lista jajajajajaj XDXDXDXD
+						if (entry.getValue().containsValue(numero))
+						{
+							//return new Pair<String,String>(  entry.getKey()  , entry.getValue().keySet()  );
+							for(String x: entry.getValue().keySet()) 
+							{
+								if (entry.getValue().get(x).equals(numero))
+								{
+									return new Pair<String,String>(  entry.getKey()  , x  );
+									
+								}
+								
+							}
+						}
+		}
+		
+		return null;
+	}
+	
+	
+
+	public void setProducciones(Map<String, List<String>> producciones) {
+		this.producciones = producciones;
+	}
+
+
+	public Set<String> first(String C) {
+
+		Set<String> lista_para_listos = new HashSet<String>();
+
+
+
+		return first_rec(C, lista_para_listos);
+	}
+
+
+	public Set<String> first_rec(String C, Set<String> lista_para_listos) {
+
+
+		//public Map<String, List<String>> getProducciones() 
+//		System.out.println(C);
+		List<String> produccionesC = getProducciones().get(C);
+//		System.out.println(produccionesC);
+
+		if(produccionesC == null) 
+		{
+			lista_para_listos.add(C);
+			return lista_para_listos;
+		}
+
+		for(String prod: produccionesC)
+		{
+			boolean parar;
+			int i = 0;
+			do {
+				parar = true;
+				String symbolo = String.valueOf(prod.charAt(i));
+
+				if(symbolo.equals("λ")) 
+				{
+					lista_para_listos.add(symbolo);
+				}
+				else if(!getProducciones().containsKey(symbolo)) 
+				{
+					lista_para_listos.add(symbolo);
+				}
+				else 
+				{
+					if(!symbolo.equals(C))
+					{
+						first_rec(symbolo,lista_para_listos);
+//						System.out.println(lista_para_listos);
+						if(lista_para_listos.contains("λ") && i+1 < prod.length())
+						{
+							lista_para_listos.remove("λ");
+							i++; 
+							parar=false;
+						}
+					}
+					else if(symbolo.equals(C) && produccionesC.contains("λ") )
+					{	
+						i++;
+						parar=false;
+
+					}
+				}
+			} while (!parar);
+		}
+		return lista_para_listos;
+	}
+	
+	
+	
+	
+	
+	// FIRST ALTERNATIVO
+	
+													//	public Set<String> first(String C){
+													//	    Set<String> lista_para_listos = new HashSet<String>();
+													//	    return first_rec(C, lista_para_listos, new HashSet<String>());
+													//	}
+													//
+													//	public Set<String> first_rec(String C, Set<String> lista_para_listos, Set<String> visited){
+													//	    if (visited.contains(C)) {
+													//	        return lista_para_listos;
+													//	    }
+													//	    visited.add(C);
+													//
+													//	    List<String> produccionesC = getProducciones().get(C);
+													//
+													//	    if(produccionesC == null) {
+													//	        lista_para_listos.add(C);
+													//	        return lista_para_listos;
+													//	    }
+													//
+													//	    for(String prod: produccionesC){
+													//	        int i = 0;
+													//	        boolean parar;
+													//	        do {
+													//	            parar = true;
+													//	            String symbolo = String.valueOf(prod.charAt(i));
+													//
+													//	            if(symbolo.equals("λ")) {
+													//	                lista_para_listos.add(symbolo);
+													//	            } else if(!getProducciones().containsKey(symbolo)) {
+													//	                lista_para_listos.add(symbolo);
+													//	            } else {
+													//	                if(!symbolo.equals(C)){
+													//	                    Set<String> first_symbolo = first_rec(symbolo, new HashSet<String>(), visited);
+													//	                    lista_para_listos.addAll(first_symbolo);
+													//	                    if(first_symbolo.contains("λ") && i+1 < prod.length()){
+													//	                        lista_para_listos.remove("λ");
+													//	                        i++; 
+													//	                        parar=false;
+													//	                    }
+													//	                } else if(symbolo.equals(C) && produccionesC.contains("λ") ) {    
+													//	                    i++;
+													//	                    parar=false;
+													//	                }
+													//	            }
+													//	        } while (!parar);
+													//	    }
+													//	    return lista_para_listos;
+													//	
+	
+	
+// FOLLOW VIEJO
+
+
+//																									public Set<String> follow(String C){
+//																								
+//																										Set<String> lista_follow = new HashSet<String>();
+//																								
+//																								
+//																										return follow_rec(C, lista_follow);
+//																									}
+//																								
+//																									public Set<String> follow_rec(String C, Set<String> lista_follow){
+//																								
+//																										Set<Map.Entry<String, List<String>>> entC = new HashSet<Map.Entry<String, List<String>>>();
+//																										//Set<Map.Entry<String, List<String>>> entC = new HashSet<Map.Entry<String, List<String>>>();
+//																										//producciones             S -> T | X | Y        X -> zT ....
+//																								
+//																										
+//																										for (Map.Entry<String, List<String>> entry : producciones.entrySet())
+//																										{
+//																											for(String produccion: entry.getValue())
+//																											{
+//																												if(produccion.contains(C))
+//																													entC.add(entry);
+//																											}
+//																								
+//																										}
+//																								
+//																										System.out.println(entC);
+//																										for (  Map.Entry<String, List<String>> entrada : entC)
+//																										{
+//																											if(entrada.getKey().equals("Y"))
+//																											{
+//																												lista_follow.add("$");
+//																											}
+//																								
+//																								
+//																											for(String produccion : entrada.getValue() ) 
+//																											{
+//																												int i = 0;
+//																								
+//																												while( i != produccion.length()-1 && !String.valueOf(produccion.charAt(i)).equals(C))
+//																												{
+//																													i++;
+//																												}
+//																								
+//																												//System.out.println(produccion.charAt(i));
+//																												if( String.valueOf(produccion.charAt(i)).equals(C))
+//																												{
+//																													if(i == produccion.length()-1) //ultima posicion
+//																													{
+//																														//lista_follow.add("$");	
+//																														String antecedente = entrada.getKey();
+//																														if(!antecedente.equals(C)) 
+//																														{
+//																															Set<String> lista_follow_antecedente = follow(antecedente);
+//																															lista_follow.addAll(lista_follow_antecedente);
+//																														}
+//																													}
+//																													else 
+//																													{
+//																														Set<String> first_sig_C = first(String.valueOf(produccion.charAt(i+1)));
+//																								
+//																														System.out.println(first_sig_C);
+//																														if(first_sig_C.contains("λ"))
+//																														{
+//																															first_sig_C.remove("λ");
+//																															lista_follow.addAll(first_sig_C);
+//																															//Set<String> follow_B = follow(String.valueOf(produccion.charAt(i+1)));
+//																															String antecedente = entrada.getKey();
+//																															if(antecedente.equals(C)) {
+//																																Set<String> follow_B = follow(antecedente);
+//																																lista_follow.addAll(follow_B);		
+//																															}
+//																														}	
+//																														else {
+//																								
+//																															lista_follow.addAll(first_sig_C);
+//																														}
+//																													}
+//																												}
+//																											}
+//																								
+//																										}
+//																										return lista_follow;
+//																									}
+
+	
+	
+	public Set<String> follow(String C){
+	    Set<String> lista_follow = new HashSet<String>();
+	    return follow_rec(C, lista_follow, new HashSet<String>());
+	}
+
+	public Set<String> follow_rec(String C, Set<String> lista_follow, Set<String> visited){
+	    if (visited.contains(C)) {
+	        return lista_follow;
+	    }
+	    visited.add(C);
+
+	    for (Map.Entry<String, List<String>> entry : producciones.entrySet()){
+	        for(String produccion: entry.getValue()){
+	            if(produccion.contains(C)){
+	                if(entry.getKey().equals("Y")){
+	                    lista_follow.add("$");
+	                }
+
+	                for(String prod : entry.getValue() ) {
+	                    int i = prod.indexOf(C);
+
+	                    if(i != -1){
+	                        if(i == prod.length()-1) { // última posición
+	                            String antecedente = entry.getKey();
+	                            if(!antecedente.equals(C)) {
+	                                Set<String> lista_follow_antecedente = follow_rec(antecedente, new HashSet<String>(), visited);
+	                                lista_follow.addAll(lista_follow_antecedente);
+	                            }
+	                        } else {
+	                            Set<String> first_sig_C = first(String.valueOf(prod.charAt(i+1)));
+
+	                            if(first_sig_C.contains("λ")){
+	                                first_sig_C.remove("λ");
+	                                lista_follow.addAll(first_sig_C);
+	                                String antecedente = entry.getKey();
+	                                if(!antecedente.equals(C)) {
+	                                    Set<String> follow_B = follow_rec(antecedente, new HashSet<String>(), visited);
+	                                    lista_follow.addAll(follow_B);        
+	                                }
+	                            } else {
+	                                lista_follow.addAll(first_sig_C);
+	                            }
+	                        }
+	                    }
+	                }
+	            }
+	        }
+	    }
+	    return lista_follow;
+	}
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+
+	public Set<String> getNoTerminales(){
+		return producciones.keySet();
+	}
+	
+	public Set<String> getTerminales(){
+	    // terminales = todos - noTerminales
+	    Set<String> todos = new HashSet<String>(getCharacters());
+	    Set<String> noTerminales = getNoTerminales();
+	    // Resta noTerminales de todos
+	    todos.removeAll(noTerminales);
+	    return todos;
+	}
+
+	
+	public ArrayList<String> getCharacters(){
+	ArrayList<String> characters = new ArrayList<>();
+
+	for (List<String> productionList : getProducciones().values()) {
+		for (String production : productionList) {
+			for (char c : production.toCharArray()) {
+				if(c!='λ') characters.add(String.valueOf(c));
+			}
+		}
+	}
+	return characters;
+	}
+	
+	
+
+
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorSintactico\Item.java 
+package proyectoPDL.analizadorSintactico;
+
+import java.util.Objects;
+
+class Item {
+	String izquierda;
+	String derecha;
+	int puntoPosicion;
+
+	public Item(String izquierda, String derecha, int puntoPosicion) {
+		this.izquierda = izquierda;
+		if(derecha.equals("λ")) derecha= "";
+		this.derecha = derecha;
+		this.puntoPosicion = puntoPosicion;
+	}
+
+	public String getIzquierda() {
+		return izquierda;
+	}
+
+	public void setIzquierda(String izquierda) {
+		this.izquierda = izquierda;
+	}
+
+	public String getDerecha() {
+		return derecha;
+	}
+
+	public void setDerecha(String derecha) {
+		this.derecha = derecha;
+	}
+
+	public int getDotPos() {
+		return puntoPosicion;
+	}
+
+	public void setPuntoPosicion(int puntoPosicion) {
+		this.puntoPosicion = puntoPosicion;
+	}
+	public String getSimboloPunto() {
+		if (puntoPosicion < derecha.length()) {
+			return String.valueOf(derecha.charAt(puntoPosicion));
+		} else {
+			return null;
+		}
+	}
+
+
+	public String toString()
+	{
+	    String derecha = getDerecha();
+	    if (derecha.isEmpty()) {
+	        return getIzquierda() + "->.";
+	    } else {
+	        return getIzquierda() + "->" + derecha.substring(0,puntoPosicion)+"."+derecha.substring(puntoPosicion,derecha.length());
+	    }
+	}
+
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj) {
+			return true;
+		}
+		if (obj == null || getClass() != obj.getClass()) {
+			return false;
+		}
+		Item item = (Item) obj;
+		return puntoPosicion == item.puntoPosicion &&
+				Objects.equals(izquierda, item.izquierda) &&
+				Objects.equals(derecha, item.derecha);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(izquierda, derecha, puntoPosicion);
+	}
+
+
+}C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorSintactico\LR1.java 
+package proyectoPDL.analizadorSintactico;
+
+import java.util.HashSet;
+import java.util.Set;
+
+public class LR1 {
+
+
+	Gramatica gram;
+
+	public LR1(Gramatica gram) {
+		this.gram = gram;
+	}
+
+	public Gramatica getGramatica() {
+		return gram;
+	}
+
+	public void setGramatica(Gramatica gram) {
+		this.gram = gram;
+	}
+
+	// SET{ N->.S , N->.X, J -> .id }
+
+	public Set<Item> cierre(Set<Item> items) {
+		Set<Item> conjuntoCerrado = new HashSet<>(items);
+		boolean hayCambio;
+
+		do {
+			hayCambio = false;
+			Set<Item> nuevosItems = new HashSet<>();
+
+			for (Item item : conjuntoCerrado) 
+			{
+				// F -> (.E)
+				String SimboloPostPunto = item.getSimboloPunto();	
+				// SpP = E
+				// N -> id | A=B
+				// GRAMMAR Hash<String, List<String> 
+				//
+				if (SimboloPostPunto != null && gram.getProducciones().containsKey(SimboloPostPunto)) 
+				{
+					// lista --> E -> E+T    T    λ
+					for (String production : gram.getProducciones().get(SimboloPostPunto)) 
+					{
+//													if(production.contains("λ"))
+//													{
+//														Item nuevoItem = new Item(item.getIzquierda(), item.getDerecha(), item.getDotPos()+1);
+//														if (!conjuntoCerrado.contains(nuevoItem) && !nuevosItems.contains(nuevoItem)) 
+//														{
+//															nuevosItems.add(nuevoItem);
+//															hayCambio = true;
+//														}
+//														
+//													}
+									//	else
+								//		{
+							Item nuevoItem = new Item(SimboloPostPunto, production, 0);
+	
+							if (!conjuntoCerrado.contains(nuevoItem) && !nuevosItems.contains(nuevoItem)) 
+							{
+								nuevosItems.add(nuevoItem);
+								hayCambio = true;
+							}
+					//	}
+					}
+				}
+			}
+			conjuntoCerrado.addAll(nuevosItems);
+		} while (hayCambio);
+
+		return conjuntoCerrado;
+	}
+	
+	
+	
+//	public Set<Item> cierre(Set<Item> items) {
+//	    Set<Item> conjuntoCerrado = new HashSet<>(items);
+//	    boolean hayCambio;
+//
+//	    do {
+//	        hayCambio = false;
+//	        Set<Item> nuevosItems = new HashSet<>();
+//
+//	        for (Item item : conjuntoCerrado) {
+//	            String SimboloPostPunto = item.getSimboloPunto();
+//
+//	            if (SimboloPostPunto != null && gram.getProducciones().containsKey(SimboloPostPunto)) {
+//	                for (String production : gram.getProducciones().get(SimboloPostPunto)) {
+//	                    int puntoPos = production.equals("λ") ? 1 : 0;
+//	                    Item nuevoItem = new Item(SimboloPostPunto, production, puntoPos);
+//
+//	                    if (!conjuntoCerrado.contains(nuevoItem) && !nuevosItems.contains(nuevoItem)) {
+//	                        nuevosItems.add(nuevoItem);
+//	                        hayCambio = true;
+//	                    }
+//	                }
+//	            }
+//	        }
+//	        conjuntoCerrado.addAll(nuevosItems);
+//	    } while (hayCambio);
+//
+//	    return conjuntoCerrado;
+//	}
+	
+	
+
+
+	public Set<Item> GOTO(Set<Item> I, String X) 
+	{
+		Set<Item> gotoSet = new HashSet<>();
+
+		for (Item item : I) {
+
+			if (   X.equals(          item.getSimboloPunto() ) ) {
+				gotoSet.add(new Item(item.getIzquierda(), item.getDerecha(), item.getDotPos() + 1));
+			}
+		}
+
+		return cierre(gotoSet);
+	}
+
+
+}
+
+
+class Estado {
+	int id;
+	Set<Item> items;
+
+	public Estado(int id, Set<Item> items) {
+		this.id = id;
+		this.items = items;
+	}
+
+
+	public String toString() {
+
+		return id +": " + items.toString() ;
+	}
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorSintactico\Pair.java 
+package proyectoPDL.analizadorSintactico;
+
+import java.util.Objects;
+
+public class Pair<K, V> {
+
+	private final K key;
+	private final V value;
+
+	public Pair(K key, V value) {
+		this.key = key;
+		this.value = value;
+	}
+
+	public K getKey() {
+		return key;
+	}
+
+	public V getValue() {
+		return value;
+	}
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj) {
+			return true;
+		}
+		if (obj == null || getClass() != obj.getClass()) {
+			return false;
+		}
+		Pair<K,V> pair = (Pair<K,V>) obj;
+		return 
+				Objects.equals(key, pair.key) &&
+				Objects.equals(value, pair.value);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(key, value);
+	}
+
+	@Override
+	public String toString() {
+		return "< "+key+", "+value+" >";
+	}
+
+
+
+
+
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\analizadorSintacticoSemantico\MainASintSem.java 
+package proyectoPDL.analizadorSintacticoSemantico;
+
+import java.io.IOException;
+import java.util.*;
+
+import Principal.TablaDeSimbolos;
+import proyectoPDL.analizadorLexico.Entrada;
+import proyectoPDL.analizadorLexico.Token;
+import proyectoPDL.analizadorLexico.Token.Tipo;
+import proyectoPDL.analizadorSemantico.AnalizadorSemantico;
+import proyectoPDL.analizadorSintactico.AnalizadorSintactico;
+import proyectoPDL.analizadorSintactico.Automata;
+import proyectoPDL.analizadorSintactico.Gramatica;
+import proyectoPDL.analizadorSintactico.LR1;
+import proyectoPDL.gestorErrores.ErrorSemantico;
+import proyectoPDL.gestorErrores.ErrorSintactico;
+import proyectoPDL.gestorErrores.GestorErrores;
+
+public class MainASintSem{
+
+	private Gramatica grammar;
+	private LR1 lr1;
+	private Automata aut;
+	AnalizadorSintactico analizadorSintactico;
+
+	
+	
+	public MainASintSem(AnalizadorSemantico ASem, TablaDeSimbolos tabla)
+	{
+		this.grammar = new Gramatica();
+		initGrammar();
+		this.lr1 = new LR1(grammar);
+		this.setAut(new Automata(lr1));    
+		getAut().construct();
+		getAut().constructTabla();
+		this.analizadorSintactico = new AnalizadorSintactico(getAut(), ASem, tabla);
+		analizadorSintactico.getPila().push("0");
+	}
+	
+	public boolean validarTokenASint(Token tok)
+	{
+		String token;
+		if(tok != null)
+		{
+		token = tok.getRepresentacionString();
+		}
+		else
+		{
+			token = "$";
+		}
+		
+		boolean verifica = true;
+			
+			try {
+			analizadorSintactico.MetodoTabular(token, tok);
+			}
+			catch (Exception ex)
+			{
+				String nombre_token = obtenerLexemaToken(tok, token);
+				if(ex.getClass() == ErrorSintactico.class)
+				{
+					System.err.println("Error Sintactico: " + "'" +nombre_token + "' no es valido en la sentencia. " + ex.getMessage() + "\nHallado en la linea: " + GestorErrores.getLineaLexico());
+		            System.exit(1);
+				}
+				else if(ex.getClass() == ErrorSemantico.class) {
+					System.err.println("Error Semantico: "+ex.getMessage()+"\nHallado en la linea: " + GestorErrores.getLineaSemSint());
+					System.exit(1);
+				}
+			}
+
+		return verifica;
+	}
+	
+	
+	private String obtenerLexemaToken(Token tok, String token)
+	{
+		String var ="";
+		if(tok == null)
+		{
+			return "EOF";
+		}
+		else if(tok.getTipo() == Tipo.ID)
+		{
+			int idPos = (int)tok.getValor();
+			Entrada ent = GestorErrores.getTablaSimbolos().obtenerEntradaXidPos(idPos);
+			var = ent.getLexema();
+			
+		}
+		else if(tok.getTipo() == Tipo.ENT || tok.getTipo() == Tipo.INT )
+		{
+			var = var + (int) tok.getValor();
+		}
+		else
+		{
+			var = tok.getRepresentacionStringInv(token);
+		}
+		return var;
+	}
+	private void initGrammar()
+	{
+		grammar.addProduccion("Y",Arrays.asList("P"));
+		grammar.addProduccion("P",Arrays.asList("BP","FP","λ"));
+		/* ## CAMBIOS ## */
+		grammar.addProduccion("B",Arrays.asList("α(E)S","γβT;","S","δ(E){C}"));
+		grammar.addProduccion("T",Arrays.asList("σ","ε","τ"));
+		grammar.addProduccion("S",Arrays.asList("β=E;","β(L);","ζE;","θβ;","ηX;"));
+		grammar.addProduccion("L",Arrays.asList("EQ","λ"));
+		grammar.addProduccion("Q",Arrays.asList(",EQ","λ"));
+		grammar.addProduccion("X",Arrays.asList("E","λ"));
+		grammar.addProduccion("E",Arrays.asList("EιR","R"));
+		grammar.addProduccion("R",Arrays.asList("RκU","U"));
+		grammar.addProduccion("U",Arrays.asList("UωV","UφV","V"));
+		grammar.addProduccion("V",Arrays.asList("V+W","VυW","W"));
+		grammar.addProduccion("W",Arrays.asList("β","(E)","β(L)","ο","ξ","ψβ"));
+		grammar.addProduccion("F",Arrays.asList("μ{C}"));
+		grammar.addProduccion("μ",Arrays.asList("ν(A)"));
+		grammar.addProduccion("ν",Arrays.asList("πβH"));
+		grammar.addProduccion("H",Arrays.asList("T","ρ"));
+		grammar.addProduccion("A",Arrays.asList("TβK","ρ"));
+		grammar.addProduccion("K",Arrays.asList(",TβK","λ"));
+		grammar.addProduccion("C",Arrays.asList("BC","λ"));
+		
+	}
+	
+	
+	public String getParse()
+	{
+		return analizadorSintactico.formatoFicheroParse();
+	}
+
+	public Automata getAut() {
+		return aut;
+	}
+
+	public void setAut(Automata aut) {
+		this.aut = aut;
+	}
+
+
+
+}
+
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\gestorErrores\ErrorSemantico.java 
+package proyectoPDL.gestorErrores;
+
+public class ErrorSemantico extends Exception {
+
+	public ErrorSemantico(String message) {
+        super(message);
+    }
+
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\gestorErrores\ErrorSintactico.java 
+package proyectoPDL.gestorErrores;
+
+public class ErrorSintactico extends Exception{
+	public ErrorSintactico(String message) {
+        super(message);
+    }
+
+}
+C:\Users\ISM\git\repository\proyectoPDF\src\proyectoPDL\gestorErrores\GestorErrores.java 
+package proyectoPDL.gestorErrores;
+
+import Principal.TablaDeSimbolos;
+
+public class GestorErrores {
+
+	static int numero_de_linea_lexico;
+	static int numero_de_linea_SemSint;
+	static TablaDeSimbolos tablaSimbolos;
+	
+	
+	public GestorErrores(TablaDeSimbolos tabla) {
+
+		numero_de_linea_lexico = 1;
+		numero_de_linea_SemSint = 1;
+		tablaSimbolos = tabla;
+	}
+	
+	public static void sumarLineaLexico() {
+
+		numero_de_linea_lexico++;
+		
+	}
+	public static void sumarLineaSemSint() {
+
+		numero_de_linea_SemSint++;
+		
+	}
+	
+	public static int getLineaLexico() {
+		return numero_de_linea_lexico;
+
+	}
+	
+	public static int getLineaSemSint() {
+		return numero_de_linea_SemSint;
+
+	}
+	
+	
+	
+	public static TablaDeSimbolos getTablaSimbolos()
+	{
+		return tablaSimbolos;
+	}
+	
+	public static void main(String[] args) {
+		// TODO Auto-generated method stub
+
+	}
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+}
