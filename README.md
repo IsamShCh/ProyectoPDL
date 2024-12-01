@@ -3,8 +3,8 @@
 
 |Autores|
 |---|
-|Isam, Saha Chaham|
-|Diego, Mendaña Álvarez|
+|Isam Saha Chaham|
+|Diego Mendaña Álvarez|
 
 
 # Proyecto PDL: Analizador Léxico, Sintáctico y Semántico
