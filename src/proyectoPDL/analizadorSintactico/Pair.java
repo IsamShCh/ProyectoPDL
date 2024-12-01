@@ -19,6 +19,7 @@ public class Pair<K, V> {
 	public V getValue() {
 		return value;
 	}
+
 	@Override
 	public boolean equals(Object obj) {
 		if (this == obj) {
@@ -27,9 +28,8 @@ public class Pair<K, V> {
 		if (obj == null || getClass() != obj.getClass()) {
 			return false;
 		}
-		Pair<K,V> pair = (Pair<K,V>) obj;
-		return 
-				Objects.equals(key, pair.key) &&
+		Pair<K, V> pair = (Pair<K, V>) obj;
+		return Objects.equals(key, pair.key) &&
 				Objects.equals(value, pair.value);
 	}
 
@@ -40,11 +40,7 @@ public class Pair<K, V> {
 
 	@Override
 	public String toString() {
-		return "< "+key+", "+value+" >";
+		return "< " + key + ", " + value + " >";
 	}
-
-
-
-
 
 }

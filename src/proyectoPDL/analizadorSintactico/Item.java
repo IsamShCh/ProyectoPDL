@@ -9,7 +9,8 @@ class Item {
 
 	public Item(String izquierda, String derecha, int puntoPosicion) {
 		this.izquierda = izquierda;
-		if(derecha.equals("λ")) derecha= "";
+		if (derecha.equals("λ"))
+			derecha = "";
 		this.derecha = derecha;
 		this.puntoPosicion = puntoPosicion;
 	}
@@ -37,6 +38,7 @@ class Item {
 	public void setPuntoPosicion(int puntoPosicion) {
 		this.puntoPosicion = puntoPosicion;
 	}
+
 	public String getSimboloPunto() {
 		if (puntoPosicion < derecha.length()) {
 			return String.valueOf(derecha.charAt(puntoPosicion));
@@ -45,17 +47,15 @@ class Item {
 		}
 	}
 
-
-	public String toString()
-	{
-	    String derecha = getDerecha();
-	    if (derecha.isEmpty()) {
-	        return getIzquierda() + "->.";
-	    } else {
-	        return getIzquierda() + "->" + derecha.substring(0,puntoPosicion)+"."+derecha.substring(puntoPosicion,derecha.length());
-	    }
+	public String toString() {
+		String derecha = getDerecha();
+		if (derecha.isEmpty()) {
+			return getIzquierda() + "->.";
+		} else {
+			return getIzquierda() + "->" + derecha.substring(0, puntoPosicion) + "."
+					+ derecha.substring(puntoPosicion, derecha.length());
+		}
 	}
-
 
 	@Override
 	public boolean equals(Object obj) {
@@ -75,6 +75,5 @@ class Item {
 	public int hashCode() {
 		return Objects.hash(izquierda, derecha, puntoPosicion);
 	}
-
 
 }

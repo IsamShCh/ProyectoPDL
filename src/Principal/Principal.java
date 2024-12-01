@@ -18,31 +18,26 @@ public class Principal {
 
 	public static void main(String[] args) throws IOException {
 		String dirActual = System.getProperty("user.dir");
-		System.out.println("Estamos trabajando en el directorio: "+dirActual);
-		
-		String nombreArchivo = dirActual+"\\fichero_entrada.txt";
-		String ficheroParse = dirActual+"\\fichero_formato_Parse_Ascendente.txt";
-		String ficheroTok = dirActual+"\\fichero_salida_tokens.txt";
-		String ficheroTabla = dirActual+"\\fichero_salida_tabla.txt";
-		
-		System.out.println("Se leerá el contenido del fichero fuente "+nombreArchivo+"\n");
+		System.out.println("Estamos trabajando en el directorio: " + dirActual);
 
-		PrintStream salidaError = new PrintStream(dirActual+"\\errores.txt");
-		
-		System.out.println("Si hay errores, se notificarán en el fichero: "+dirActual+"\\errores.txt");
-        
-		/*
-        System.setErr(salidaError);
-		*/
-		
-        File file = new File(nombreArchivo);
-        if(!file.exists())
-        {
-        	System.err.println("No se ha encontrado un fichero fuente llamado 'fichero_entrada.txt' que contenga el código a analizar");
-        	System.exit(0);
-        }
-        
-		
+		String nombreArchivo = dirActual + "\\fichero_entrada.txt";
+		String ficheroParse = dirActual + "\\fichero_formato_Parse_Ascendente.txt";
+		String ficheroTok = dirActual + "\\fichero_salida_tokens.txt";
+		String ficheroTabla = dirActual + "\\fichero_salida_tabla.txt";
+
+		System.out.println("Se leerá el contenido del fichero fuente " + nombreArchivo + "\n");
+
+		PrintStream salidaError = new PrintStream(dirActual + "\\errores.txt");
+
+		System.out.println("Si hay errores, se notificarán en el fichero: " + dirActual + "\\errores.txt");
+
+		File file = new File(nombreArchivo);
+		if (!file.exists()) {
+			System.err.println(
+					"No se ha encontrado un fichero fuente llamado 'fichero_entrada.txt' que contenga el código a analizar");
+			System.exit(0);
+		}
+
 		TablaDeSimbolos tabla = new TablaDeSimbolos();
 		GestorErrores gestorE = new GestorErrores(tabla);
 		MainALexico AL = new MainALexico(nombreArchivo, tabla);
@@ -63,13 +58,13 @@ public class Principal {
 		BufferedWriter buffer_Tabla = new BufferedWriter(escritor_Tabla);
 
 		while (!parar) {
-			tok = AL.siguienteToken();   /* LOS ERRORES SE GESTIONAN DENTRO DEL ANALIZADOR LEXICO*/
+			tok = AL.siguienteToken(); /* LOS ERRORES SE GESTIONAN DENTRO DEL ANALIZADOR LEXICO */
 			if (tok == null) {
 				parar = true;
 			} else {
 				buffer_tok.write(tok.toString() + " ");
 			}
-			//System.out.println(tok);
+			// System.out.println(tok);
 
 			if (parar == true) // estamos en el caso $
 			{
@@ -84,14 +79,12 @@ public class Principal {
 		buffer_tok.close();
 		buffer_Tabla.close();
 		buffer_Parse.close();
-		//System.out.println(Automata.sustitucionSimbolos(AS.getAut().toDot()));
-		
+
 		System.out.println("----------------------------------.");
 		System.err.println("Ejecucion sin errores.");
-		System.out.println("Puedes revisar la salida de tokens en: " +ficheroTok);
-		System.out.println("Puedes revisar la Tabla de Simbolos en: " +ficheroTabla);
-		System.out.println("Puedes revisar el Parse Ascendente en: " +ficheroParse);
-		
+		System.out.println("Puedes revisar la salida de tokens en: " + ficheroTok);
+		System.out.println("Puedes revisar la Tabla de Simbolos en: " + ficheroTabla);
+		System.out.println("Puedes revisar el Parse Ascendente en: " + ficheroParse);
 
 	}
 

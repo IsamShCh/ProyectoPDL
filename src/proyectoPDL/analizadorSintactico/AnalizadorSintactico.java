@@ -21,7 +21,6 @@ public class AnalizadorSintactico {
 	AnalizadorSemantico ASem;
 	TablaDeSimbolos tabla;
 
-
 	public AnalizadorSintactico(Automata automata, AnalizadorSemantico ASem, TablaDeSimbolos tabla) {
 		this.setAutomata(automata);
 		this.setPila(new Stack<String>());
@@ -29,56 +28,55 @@ public class AnalizadorSintactico {
 		this.ASem = ASem;
 		this.tabla = tabla;
 	}
+
 	private int estado_anterior;
-/* Realizamos la  evaluacion del token  mediante el metodo tabular. */
-	public void MetodoTabular(String token, Token tok) throws Exception { // tenemos que ponerle de quien va a solicitar los
+
+	/* Realizamos la evaluacion del token mediante el metodo tabular. */
+	public void MetodoTabular(String token, Token tok) throws Exception { // tenemos que ponerle de quien va a solicitar
+																			// los
 		// tokens;
 
 		Stack<String> pilaASint = pila;
 		Stack<Atributo> pilaASem = ASem.getPila();
-		
+
 		// tenemos que poner que convierta los tokens en simbolos
 		String s = getPila().pop(); // estado
 		Pair<Character, Integer> siguiente_accion = getAutomata().Accion(s, token);
-		
-		System.out.print("");
 
+		System.out.print("");
 
 		if (siguiente_accion == null) {
 			String esperados = "";
-			
-			Estado est  = getAutomata().listaEstados.get(estado_anterior);
+
+			Estado est = getAutomata().listaEstados.get(estado_anterior);
 			Set<String> terminales = getAutomata().lr1.gram.getTerminales();
 			Set<String> hola = getAutomata().listaTransiciones.get(est).keySet();
-			for(String transiciones : getAutomata().listaTransiciones.get(est).keySet())
-			{
-				//transiciones = transiciones;
-				if(terminales.contains(transiciones)) esperados+="'"+transiciones+"' | ";
-				
+			for (String transiciones : getAutomata().listaTransiciones.get(est).keySet()) {
+				// transiciones = transiciones;
+				if (terminales.contains(transiciones))
+					esperados += "'" + transiciones + "' | ";
+
 			}
-			String mensaje ="";
-			if(esperados.length()>1)
-			{
-				esperados  =  Automata.sustitucionSimbolos(esperados);
-				esperados = esperados.substring(0, esperados.length()-3);
-				mensaje   = "Se esperaba: "  + esperados + "." ;
-			}
-			else {
-				
+			String mensaje = "";
+			if (esperados.length() > 1) {
+				esperados = Automata.sustitucionSimbolos(esperados);
+				esperados = esperados.substring(0, esperados.length() - 3);
+				mensaje = "Se esperaba: " + esperados + ".";
+			} else {
+
 				mensaje = "";
 			}
 
 			throw new ErrorSintactico(mensaje);
 		}
 
-		
 		else if (siguiente_accion.getKey() == 'd') // CASO 1 ACCION [s,a] = desp k
 		{
 			estado_anterior = siguiente_accion.getValue();
 			Entrada ent = null;
 			Atributo at = null;
 			if (tok.getTipo() == Tipo.ID) {
-				//ent = tabla.obtenerEntradaXidPos((int) tok.getValor());
+				// ent = tabla.obtenerEntradaXidPos((int) tok.getValor());
 				ent = tabla.obtenerEntradaXidPos((int) tok.getValor());
 				at = new Atributo(token, ent.getTipo(), ent);
 			}
@@ -90,13 +88,11 @@ public class AnalizadorSintactico {
 
 			getPila().push(String.valueOf(siguiente_accion.getValue())); // pedimos nuevo token. No hacemos nada
 			pilaASem.push(null);
-			
-			if(GestorErrores.getLineaLexico() > GestorErrores.getLineaSemSint())
-			{
+
+			if (GestorErrores.getLineaLexico() > GestorErrores.getLineaSemSint()) {
 				GestorErrores.sumarLineaSemSint();
 			}
-			
-			
+
 		}
 
 		else if (siguiente_accion.getKey() == 'r') // CASO 2 ACCION[s,a] = red X X. A-->B
@@ -131,16 +127,15 @@ public class AnalizadorSintactico {
 			ASem.ejecutarAccionSemantica(numeroDeRegla, contador);
 
 			/*
- __   ___   ___ ___   _  __    __  ___  ___
- \ \ / /_\ / __|_ _| /_\ | \  /  |/ _ \/ __|
-  \ V / _ \ (__ | | / _ \| |\/   | | (_) \__ \
-   \_/_/ \_\___|___/_/_\_\_|   |_|\___/|___/
-   | |    /_\   | _ \_ _| |    /_\
-   | |__ / _ \  | _/| | | |__ / _ \
-   |____/_/ \_\ |_| |___|____/_/ \_\
+			 * __ ___ ___ ___ _ __ __ ___ ___
+			 * \ \ / /_\ / __|_ _| /_\ | \ / |/ _ \/ __|
+			 * \ V / _ \ (__ | | / _ \| |\/ | | (_) \__ \
+			 * \_/_/ \_\___|___/_/_\_\_| |_|\___/|___/
+			 * | | /_\ | _ \_ _| | /_\
+			 * | |__ / _ \ | _/| | | |__ / _ \
+			 * |____/_/ \_\ |_| |___|____/_/ \_\
 			 * 
 			 */
-
 
 			for (int i = 0; i < contador * 2; i++) // sacamos elementos de la pila
 			{
@@ -150,7 +145,8 @@ public class AnalizadorSintactico {
 			String s_ = getPila().pop();
 			getPila().push(s_);
 			String antecedente = regla_a_aplicar.getKey();
-			Integer valGOTO = getAutomata().GOTO(s_, antecedente); // obtenemos GOTO[s' , A] y lo metemos en la pila ::->
+			Integer valGOTO = getAutomata().GOTO(s_, antecedente); // obtenemos GOTO[s' , A] y lo metemos en la pila
+																	// ::->
 			// GOTO[estado s_, A antecedente de la regla a aplicar]
 
 			getPila().push(antecedente);
@@ -164,13 +160,11 @@ public class AnalizadorSintactico {
 			getPila().push(s);
 		} else {
 			System.err.println("HAY UN ERROR INESPERADO");
-			//System.exit(0);
+			// System.exit(0);
 			throw new ErrorSintactico("");
 		}
 
 	}
-
-
 
 	public String formatoFicheroGramatica() {
 		String buffer = "";
@@ -219,15 +213,19 @@ public class AnalizadorSintactico {
 
 		return buffer + "\n";
 	}
+
 	public Stack<String> getPila() {
 		return pila;
 	}
+
 	public void setPila(Stack<String> pila) {
 		this.pila = pila;
 	}
+
 	public Automata getAutomata() {
 		return automata;
 	}
+
 	public void setAutomata(Automata automata) {
 		this.automata = automata;
 	}
